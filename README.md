@@ -2,10 +2,6 @@
 
 A standalone Python package that combines **piecewise-linear trend detection** and **plain-English narrative generation** for time-series data.
 
-Originally developed across two repos:
-- Trend detection logic → `dime-worldbank/mega-boost` (`feature/add_trend_detection_model`)
-- Narrative generation → `dime-worldbank/rpf-country-dash` (`enhancement/trend_narrative`)
-
 ---
 
 ## Installation
@@ -21,67 +17,76 @@ cd trend-narrative
 pip install -e ".[dev]"
 ```
 
-**In Databricks:**
-```python
-%pip install trend-narrative
-```
-
 Dependencies: `numpy`, `scipy`, `pwlf`
 
 ---
 
-## Quick start
+## Two calling paths
 
-### One-liner
+### Path 1 — from precomputed data
+
+If you already have segments and a CV value stored (e.g. from a database or
+a previous extraction run), pass them directly — no re-fitting required:
+
+```python
+from trend_narrative import get_segment_narrative
+
+narrative = get_segment_narrative(
+    segments=row["segments"],
+    cv_value=row["cv_value"],
+    metric="health spending",
+)
+print(narrative)
+```
+
+### Path 2 — from raw data
+
+Create an `InsightExtractor` with your chosen detector, then pass it to the
+narrative function. Keeping the two steps separate means you can swap in any
+custom detector without touching the narrative layer:
 
 ```python
 import numpy as np
-from trend_narrative import generate_narrative
+from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
 
 x = np.arange(2010, 2022, dtype=float)
 y = np.array([100, 105, 112, 108, 115, 130, 125, 120, 118, 122, 135, 148], dtype=float)
 
-result = generate_narrative(x, y, metric="total real expenditure")
-print(result["narrative"])
-# → "From 2010 to 2015, the total real expenditure showed an upward trend.
-#    Trend then shifted, reaching a peak in 2015 before reversing into a decline. ..."
-print(f"CV: {result['cv_value']:.1f}%")
-print(result["segments"])
+extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
+narrative = get_segment_narrative(extractor=extractor, metric="health spending")
+print(narrative)
+# → "From 2010 to 2015, the health spending showed an upward trend.
+#    Trend then shifted, reaching a peak in 2015 before reversing into a decline."
 ```
 
-### Step-by-step
+You can also call the extraction step separately if you need the raw numbers:
 
 ```python
-from trend_narrative import InsightExtractor, get_segment_narrative
-
-extractor = InsightExtractor(x, y)
 suite = extractor.extract_full_suite()
-# suite = {"cv_value": 14.2, "segments": [...]}
-
-narrative = get_segment_narrative(
-    suite["segments"],
-    cv_value=suite["cv_value"],
-    metric="health spending",
-)
-print(narrative)
+# {"cv_value": 14.2, "segments": [...]}
 ```
 
 ---
 
 ## API reference
 
-### `generate_narrative(x, y, metric="expenditure", detector_kwargs=None)`
+### `get_segment_narrative(segments, cv_value, metric="expenditure")`
+### `get_segment_narrative(extractor, metric="expenditure")`
 
-End-to-end convenience function. Runs detection, extracts insights, and returns a narrative in one call.
+Generates a plain-English narrative. Accepts either precomputed data (Path 1)
+or an `InsightExtractor` instance (Path 2).
 
-Returns `{"narrative": str, "cv_value": float, "segments": list[dict]}`.
+- No segments + low CV → *"remained highly stable"*
+- No segments + high CV → *"exhibited significant volatility"*
+- Single segment → direction + % change sentence
+- Multi-segment → transition phrases (peak / trough / continuation)
 
 ---
 
 ### `TrendDetector(max_segments=3, threshold=0.05)`
 
-Fits a piecewise-linear model using BIC-optimised segment count and snaps
-breakpoints to integer years / local extrema.
+Fits a piecewise-linear model using BIC-optimised segment count, snapping
+breakpoints to integer years and local extrema.
 
 | Method | Returns | Description |
 |---|---|---|
@@ -96,37 +101,27 @@ Each segment dict contains: `start_year`, `end_year`, `start_value`,
 
 ### `InsightExtractor(x, y, detector=None)`
 
-High-level facade combining volatility and trend detection.
+Combines volatility measurement with trend detection. Pass a custom detector
+to control the fitting logic.
 
 | Method | Returns | Description |
 |---|---|---|
 | `get_volatility()` | `float` | Coefficient of Variation (%) |
-| `get_structural_segments()` | `list[dict]` | Delegates to `TrendDetector` |
+| `get_structural_segments()` | `list[dict]` | Delegates to the detector |
 | `extract_full_suite()` | `dict` | `{cv_value, segments}` |
-
----
-
-### `get_segment_narrative(segments, cv_value, metric="expenditure")`
-
-Convert segment data into a multi-sentence English narrative.
-
-- No segments + low CV → *"remained highly stable"*
-- No segments + high CV → *"exhibited significant volatility"*
-- Single segment → direction + % change sentence
-- Multi-segment → transition phrases (peak / trough / continuation)
 
 ---
 
 ### `consolidate_segments(segments)`
 
-Merge consecutive segments sharing the same slope direction. Useful for
-simplifying noisy multi-segment fits before narrative generation.
+Merges consecutive segments that share the same slope direction. Applied
+automatically inside `get_segment_narrative`.
 
 ---
 
 ### `millify(n)`
 
-Format large numbers with suffix: `1_500_000 → "1.50 M"`.
+Formats large numbers with a human-readable suffix: `1_500_000 → "1.50 M"`.
 
 ---
 
