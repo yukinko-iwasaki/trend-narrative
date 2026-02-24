@@ -6,7 +6,7 @@ plain-English narrative generation.
 
 Two calling paths are supported:
 
-Path 1 – precomputed data (e.g. from a Delta table):
+Path 1 – precomputed data (e.g. segments already stored in a Delta table):
 
     from trend_narrative import get_segment_narrative
 
@@ -16,27 +16,16 @@ Path 1 – precomputed data (e.g. from a Delta table):
         metric="health spending",
     )
 
-Path 2 – raw data (standalone):
+Path 2 – standalone (create an InsightExtractor with your chosen detector,
+then pass it to the narrative function):
 
-    from trend_narrative import get_segment_narrative
+    from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
 
-    narrative = get_segment_narrative(
-        x=years_array,
-        y=values_array,
-        metric="health spending",
-    )
+    extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
+    narrative = get_segment_narrative(extractor=extractor, metric="health spending")
 
-Or use InsightExtractor directly for the extraction layer:
-
-    from trend_narrative import InsightExtractor, get_segment_narrative
-
-    extractor = InsightExtractor(x, y)
-    suite = extractor.extract_full_suite()
-    narrative = get_segment_narrative(
-        segments=suite["segments"],
-        cv_value=suite["cv_value"],
-        metric="health spending",
-    )
+Keeping the extractor construction separate means you can plug in any
+custom detector without changing the narrative layer.
 """
 
 from .detector import TrendDetector

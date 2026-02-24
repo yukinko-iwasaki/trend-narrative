@@ -6,11 +6,15 @@ Convert structured trend-segment data into human-readable text narratives.
 Two calling paths are supported:
 
   Path 1 – precomputed (Databricks / Delta table):
-      get_segment_narrative(segments=row["segments"], cv_value=row["cv_value"],
-                            metric="health spending")
+      get_segment_narrative(
+          segments=row["segments"],
+          cv_value=row["cv_value"],
+          metric="health spending",
+      )
 
-  Path 2 – raw data (standalone):
-      get_segment_narrative(x=years, y=values, metric="health spending")
+  Path 2 – standalone (user controls extraction logic via InsightExtractor):
+      extractor = InsightExtractor(x, y, detector=MyCustomDetector())
+      get_segment_narrative(extractor=extractor, metric="health spending")
 
 Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 """
@@ -18,7 +22,10 @@ Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from .extractor import InsightExtractor
 
 # ------------------------------------------------------------------
 # Constants
@@ -120,15 +127,14 @@ def get_segment_narrative(
     segments: Optional[list[dict]] = None,
     cv_value: Optional[float] = None,
     metric: str = "expenditure",
-    x=None,
-    y=None,
-    detector_kwargs: Optional[dict] = None,
+    extractor: Optional["InsightExtractor"] = None,
 ) -> str:
     """Generate a plain-English narrative from trend data.
 
     Supports two calling paths:
 
-    **Path 1 – precomputed** (e.g. data already stored in a Delta table):
+    **Path 1 – precomputed** (e.g. segments and cv already stored in a
+    Delta table — no re-fitting required):
 
     .. code-block:: python
 
@@ -138,70 +144,62 @@ def get_segment_narrative(
             metric="health spending",
         )
 
-    **Path 2 – raw data** (standalone, extraction happens internally):
+    **Path 2 – standalone** (user creates an :class:`InsightExtractor`
+    with the desired detection logic, then passes it in):
 
     .. code-block:: python
 
-        get_segment_narrative(
-            x=years_array,
-            y=values_array,
-            metric="health spending",
-        )
+        from trend_narrative import InsightExtractor, TrendDetector
+
+        extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
+        get_segment_narrative(extractor=extractor, metric="health spending")
+
+    Keeping the extractor construction separate means you can swap in any
+    custom detector without touching the narrative layer.
 
     Parameters
     ----------
     segments : list[dict], optional
-        Precomputed segment list from :meth:`TrendDetector.extract_trend`.
-        Required for Path 1. Each dict must contain ``start_year``,
-        ``end_year``, ``start_value``, ``end_value``, ``slope``.
+        Precomputed segment list (Path 1). Each dict must contain
+        ``start_year``, ``end_year``, ``start_value``, ``end_value``,
+        ``slope``.
     cv_value : float, optional
-        Precomputed Coefficient of Variation (%) from
-        :class:`InsightExtractor`. Required for Path 1.
+        Precomputed Coefficient of Variation % (Path 1).
     metric : str
         Human-readable metric label used in the generated text
         (default ``"expenditure"``).
-    x : array-like, optional
-        1-D array of x-values (e.g. years). Required for Path 2.
-    y : array-like, optional
-        1-D array of metric values aligned with *x*. Required for Path 2.
-    detector_kwargs : dict, optional
-        Extra keyword arguments forwarded to :class:`TrendDetector`
-        when using Path 2 (e.g. ``{"max_segments": 2}``).
+    extractor : InsightExtractor, optional
+        A configured :class:`InsightExtractor` instance (Path 2).
+        ``extract_full_suite()`` is called internally.
 
     Returns
     -------
     str
-        A multi-sentence narrative string, or an empty string when
-        inputs are invalid.
+        A multi-sentence narrative string.
 
     Raises
     ------
     ValueError
-        If neither (segments + cv_value) nor (x + y) are provided.
+        If neither an extractor nor (segments + cv_value) are provided.
     """
-    # --- Path 2: raw data supplied → run extraction first ---
-    if x is not None and y is not None:
-        from .extractor import InsightExtractor
-        from .detector import TrendDetector
-
-        detector = TrendDetector(**(detector_kwargs or {}))
-        extractor = InsightExtractor(x, y, detector=detector)
+    # --- Path 2: extractor object supplied → run extraction now ---
+    if extractor is not None:
         suite = extractor.extract_full_suite()
         segments = suite["segments"]
         cv_value = suite["cv_value"]
 
-    # --- Validate inputs ---
+    # --- Validate Path 1 inputs ---
     elif segments is None or cv_value is None:
         raise ValueError(
-            "Provide either (x, y) for raw data, "
-            "or (segments, cv_value) for precomputed data."
+            "Provide either an InsightExtractor via extractor=, "
+            "or precomputed data via segments= and cv_value=."
         )
 
     return _build_narrative(segments, cv_value, metric)
 
 
 # ------------------------------------------------------------------
-# Internal narrative builder (pure logic, no data fetching)
+# Internal narrative builder (pure text logic, no data concerns)
 # ------------------------------------------------------------------
 
 
