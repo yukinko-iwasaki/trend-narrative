@@ -4,28 +4,45 @@ trend_narrative
 A standalone Python package for piecewise-linear trend detection and
 plain-English narrative generation.
 
-Typical usage
--------------
->>> from trend_narrative import generate_narrative
->>> import numpy as np
->>> x = np.arange(2010, 2022)
->>> y = np.array([100,105,110,108,115,130,125,120,118,122,130,140], dtype=float)
->>> result = generate_narrative(x, y, metric="health spending")
->>> print(result["narrative"])
+Two calling paths are supported:
 
-Or step-by-step:
+Path 1 – precomputed data (e.g. from a Delta table):
 
->>> from trend_narrative import InsightExtractor, get_segment_narrative
->>> extractor = InsightExtractor(x, y)
->>> suite = extractor.extract_full_suite()
->>> print(get_segment_narrative(suite["segments"], suite["cv_value"], metric="spending"))
+    from trend_narrative import get_segment_narrative
+
+    narrative = get_segment_narrative(
+        segments=row["segments"],
+        cv_value=row["cv_value"],
+        metric="health spending",
+    )
+
+Path 2 – raw data (standalone):
+
+    from trend_narrative import get_segment_narrative
+
+    narrative = get_segment_narrative(
+        x=years_array,
+        y=values_array,
+        metric="health spending",
+    )
+
+Or use InsightExtractor directly for the extraction layer:
+
+    from trend_narrative import InsightExtractor, get_segment_narrative
+
+    extractor = InsightExtractor(x, y)
+    suite = extractor.extract_full_suite()
+    narrative = get_segment_narrative(
+        segments=suite["segments"],
+        cv_value=suite["cv_value"],
+        metric="health spending",
+    )
 """
 
 from .detector import TrendDetector
 from .extractor import InsightExtractor
 from .narrative import (
     consolidate_segments,
-    generate_narrative,
     get_segment_narrative,
     millify,
 )
@@ -34,7 +51,6 @@ __all__ = [
     "TrendDetector",
     "InsightExtractor",
     "consolidate_segments",
-    "generate_narrative",
     "get_segment_narrative",
     "millify",
 ]

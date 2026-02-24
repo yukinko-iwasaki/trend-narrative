@@ -3,6 +3,15 @@ trend_narrative.narrative
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 Convert structured trend-segment data into human-readable text narratives.
 
+Two calling paths are supported:
+
+  Path 1 – precomputed (Databricks / Delta table):
+      get_segment_narrative(segments=row["segments"], cv_value=row["cv_value"],
+                            metric="health spending")
+
+  Path 2 – raw data (standalone):
+      get_segment_narrative(x=years, y=values, metric="health spending")
+
 Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 """
 
@@ -108,25 +117,56 @@ def consolidate_segments(segments: list[dict]) -> list[dict]:
 
 
 def get_segment_narrative(
-    segments: list[dict],
-    cv_value: float,
+    segments: Optional[list[dict]] = None,
+    cv_value: Optional[float] = None,
     metric: str = "expenditure",
+    x=None,
+    y=None,
+    detector_kwargs: Optional[dict] = None,
 ) -> str:
-    """Generate a plain-English narrative from piecewise trend segments.
+    """Generate a plain-English narrative from trend data.
+
+    Supports two calling paths:
+
+    **Path 1 – precomputed** (e.g. data already stored in a Delta table):
+
+    .. code-block:: python
+
+        get_segment_narrative(
+            segments=row["segments"],
+            cv_value=row["cv_value"],
+            metric="health spending",
+        )
+
+    **Path 2 – raw data** (standalone, extraction happens internally):
+
+    .. code-block:: python
+
+        get_segment_narrative(
+            x=years_array,
+            y=values_array,
+            metric="health spending",
+        )
 
     Parameters
     ----------
-    segments : list[dict]
-        Segment list as returned by :func:`consolidate_segments` or
-        :meth:`TrendDetector.extract_trend`.  Each dict must contain
-        ``start_year``, ``end_year``, ``start_value``, ``end_value``,
-        ``slope``.
-    cv_value : float
-        Coefficient of Variation (%) from :class:`InsightExtractor`.
-        Used when no segments exist to describe overall volatility.
+    segments : list[dict], optional
+        Precomputed segment list from :meth:`TrendDetector.extract_trend`.
+        Required for Path 1. Each dict must contain ``start_year``,
+        ``end_year``, ``start_value``, ``end_value``, ``slope``.
+    cv_value : float, optional
+        Precomputed Coefficient of Variation (%) from
+        :class:`InsightExtractor`. Required for Path 1.
     metric : str
-        Human-readable metric label used inside the generated text
+        Human-readable metric label used in the generated text
         (default ``"expenditure"``).
+    x : array-like, optional
+        1-D array of x-values (e.g. years). Required for Path 2.
+    y : array-like, optional
+        1-D array of metric values aligned with *x*. Required for Path 2.
+    detector_kwargs : dict, optional
+        Extra keyword arguments forwarded to :class:`TrendDetector`
+        when using Path 2 (e.g. ``{"max_segments": 2}``).
 
     Returns
     -------
@@ -134,17 +174,43 @@ def get_segment_narrative(
         A multi-sentence narrative string, or an empty string when
         inputs are invalid.
 
-    Examples
-    --------
-    >>> segs = [{"start_year": 2010, "end_year": 2020,
-    ...          "start_value": 100, "end_value": 200, "slope": 10}]
-    >>> text = get_segment_narrative(segs, cv_value=8.0, metric="health spending")
-    >>> "increased" in text
-    True
+    Raises
+    ------
+    ValueError
+        If neither (segments + cv_value) nor (x + y) are provided.
     """
-    if not segments and cv_value is None:
-        return ""
+    # --- Path 2: raw data supplied → run extraction first ---
+    if x is not None and y is not None:
+        from .extractor import InsightExtractor
+        from .detector import TrendDetector
 
+        detector = TrendDetector(**(detector_kwargs or {}))
+        extractor = InsightExtractor(x, y, detector=detector)
+        suite = extractor.extract_full_suite()
+        segments = suite["segments"]
+        cv_value = suite["cv_value"]
+
+    # --- Validate inputs ---
+    elif segments is None or cv_value is None:
+        raise ValueError(
+            "Provide either (x, y) for raw data, "
+            "or (segments, cv_value) for precomputed data."
+        )
+
+    return _build_narrative(segments, cv_value, metric)
+
+
+# ------------------------------------------------------------------
+# Internal narrative builder (pure logic, no data fetching)
+# ------------------------------------------------------------------
+
+
+def _build_narrative(
+    segments: list[dict],
+    cv_value: float,
+    metric: str,
+) -> str:
+    """Core narrative logic shared by both calling paths."""
     segments = consolidate_segments(segments)
 
     # --- No detectable trend: fall back to volatility description ---
@@ -200,61 +266,3 @@ def get_segment_narrative(
             narrative.append(f"{prefix} {transition}")
 
     return " ".join(narrative)
-
-
-# ------------------------------------------------------------------
-# Convenience: run the full pipeline in one call
-# ------------------------------------------------------------------
-
-
-def generate_narrative(
-    x,
-    y,
-    metric: str = "expenditure",
-    detector_kwargs: Optional[dict] = None,
-) -> dict:
-    """End-to-end helper: detect trends, extract insights, generate text.
-
-    Parameters
-    ----------
-    x : array-like
-        1-D array of x-values (e.g. years).
-    y : array-like
-        1-D array of metric values.
-    metric : str
-        Human-readable label for the metric.
-    detector_kwargs : dict, optional
-        Keyword arguments forwarded to :class:`~trend_narrative.TrendDetector`.
-
-    Returns
-    -------
-    dict
-        ``{"narrative": str, "cv_value": float, "segments": list[dict]}``
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> x = np.arange(2010, 2022)
-    >>> y = np.array([100,105,110,108,115,130,125,120,118,122,130,140], dtype=float)
-    >>> result = generate_narrative(x, y, metric="health spending")
-    >>> isinstance(result["narrative"], str)
-    True
-    """
-    from .extractor import InsightExtractor
-    from .detector import TrendDetector
-
-    detector = TrendDetector(**(detector_kwargs or {}))
-    extractor = InsightExtractor(x, y, detector=detector)
-    suite = extractor.extract_full_suite()
-
-    narrative = get_segment_narrative(
-        segments=suite["segments"],
-        cv_value=suite["cv_value"],
-        metric=metric,
-    )
-
-    return {
-        "narrative": narrative,
-        "cv_value": suite["cv_value"],
-        "segments": suite["segments"],
-    }
