@@ -11,7 +11,19 @@ Originally developed across two repos:
 ## Installation
 
 ```bash
-pip install -e ".[dev]"   # editable install with dev dependencies
+pip install trend-narrative
+```
+
+**For development** (editable install with test dependencies):
+```bash
+git clone https://github.com/yukinko-iwasaki/trend-narrative.git
+cd trend-narrative
+pip install -e ".[dev]"
+```
+
+**In Databricks:**
+```python
+%pip install trend-narrative
 ```
 
 Dependencies: `numpy`, `scipy`, `pwlf`
@@ -57,6 +69,14 @@ print(narrative)
 ---
 
 ## API reference
+
+### `generate_narrative(x, y, metric="expenditure", detector_kwargs=None)`
+
+End-to-end convenience function. Runs detection, extracts insights, and returns a narrative in one call.
+
+Returns `{"narrative": str, "cv_value": float, "segments": list[dict]}`.
+
+---
 
 ### `TrendDetector(max_segments=3, threshold=0.05)`
 
