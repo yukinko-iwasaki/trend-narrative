@@ -7,14 +7,14 @@ A standalone Python package that combines **piecewise-linear trend detection** a
 ## Installation
 
 ```bash
-pip install trend-narrative
+uv add trend-narrative
 ```
 
 **For development** (editable install with test dependencies):
 ```bash
 git clone https://github.com/yukinko-iwasaki/trend-narrative.git
 cd trend-narrative
-pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 Dependencies: `numpy`, `scipy`, `pwlf`
@@ -128,9 +128,9 @@ Formats large numbers with a human-readable suffix: `1_500_000 → "1.50 M"`.
 ## Running tests
 
 ```bash
-pytest
+uv run pytest
 # or with coverage:
-pytest --cov=trend_narrative --cov-report=term-missing
+uv run pytest --cov=trend_narrative --cov-report=term-missing
 ```
 
 ---

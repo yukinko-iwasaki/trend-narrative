@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "trend-narrative"
@@ -35,6 +35,5 @@ dev = [
 testpaths = ["tests"]
 addopts = "-v --tb=short"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["trend_narrative*"]
+[tool.hatch.build.targets.wheel]
+packages = ["trend_narrative"]
