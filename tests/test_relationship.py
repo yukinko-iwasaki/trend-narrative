@@ -88,13 +88,15 @@ class TestComputeYoyChanges:
         years = np.array([2010, 2011, 2012, 2013])
         values = np.array([100, 110, 120, 130])
         changes = compute_yoy_changes(years, values)
-        np.testing.assert_array_equal(changes, [10, 10, 10])
+        # 10/100=0.1, 10/110=0.0909, 10/120=0.0833
+        np.testing.assert_array_almost_equal(changes, [0.1, 0.0909, 0.0833], decimal=3)
 
     def test_with_gaps_annualized(self):
         years = np.array([2010, 2012, 2015])
         values = np.array([100, 120, 150])
         changes = compute_yoy_changes(years, values)
-        np.testing.assert_array_almost_equal(changes, [10, 10])
+        # 20/100/2=0.1, 30/120/3=0.0833
+        np.testing.assert_array_almost_equal(changes, [0.1, 0.0833], decimal=3)
 
     def test_single_value(self):
         years = np.array([2010])
@@ -106,7 +108,8 @@ class TestComputeYoyChanges:
         years = np.array([2012, 2010, 2011])
         values = np.array([120, 100, 110])
         changes = compute_yoy_changes(years, values)
-        np.testing.assert_array_equal(changes, [10, 10])
+        # 10/100=0.1, 10/110=0.0909
+        np.testing.assert_array_almost_equal(changes, [0.1, 0.0909], decimal=3)
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +167,9 @@ class TestComputeLaggedCorrelation:
         )
         assert result is not None
         assert result["n_pairs"] == 4
-        assert result["correlation"] == pytest.approx(0.753, rel=0.01)
-        assert result["p_value"] == pytest.approx(0.247, rel=0.01)
+        # With percentage changes: r=0.863, p=0.137
+        assert result["correlation"] == pytest.approx(0.863, rel=0.01)
+        assert result["p_value"] == pytest.approx(0.137, rel=0.01)
 
     def test_lag_one(self):
         result = compute_lagged_correlation(
@@ -175,8 +179,9 @@ class TestComputeLaggedCorrelation:
         )
         assert result is not None
         assert result["n_pairs"] == 4
-        assert result["correlation"] == pytest.approx(0.580, rel=0.01)
-        assert result["p_value"] == pytest.approx(0.420, rel=0.01)
+        # With percentage changes: r=-0.040, p=0.960
+        assert result["correlation"] == pytest.approx(-0.040, abs=0.01)
+        assert result["p_value"] == pytest.approx(0.960, rel=0.01)
 
     def test_insufficient_overlap(self):
         result = compute_lagged_correlation(
@@ -445,20 +450,21 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
         assert result["method"] == "lagged_correlation"
         assert result["best_lag"]["lag"] == 0
-        assert result["best_lag"]["correlation"] == pytest.approx(0.968, rel=0.01)
+        assert result["best_lag"]["correlation"] == pytest.approx(0.975, rel=0.01)
         assert result["best_lag"]["p_value"] == pytest.approx(0.0, abs=0.001)
         assert result["best_lag"]["n_pairs"] == 9
         assert result["narrative"] == (
             "When spending increases, outcome tends to increase in the same year. "
-            "This is a very strong relationship (r=0.97) and is statistically reliable (p=0.000), "
+            "This is a very strong relationship (r=0.98) and is statistically reliable (p=0.000), "
             "based on 9 year-over-year comparisons."
         )
 
     def test_negative_correlation(self):
         segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
-        ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
-        comp_values = np.array([100, 95, 92, 82, 80, 70, 68, 58, 52, 40], dtype=float)
+        # Data designed so percentage changes are negatively correlated
+        ref_values = np.array([100, 110, 115, 130, 140, 145, 160, 175, 180, 200], dtype=float)
+        comp_values = np.array([100, 95, 93, 85, 80, 78, 70, 62, 60, 50], dtype=float)
 
         result = get_relationship_narrative(
             reference_segments=segments,
@@ -472,12 +478,12 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
         assert result["method"] == "lagged_correlation"
         assert result["best_lag"]["lag"] == 0
-        assert result["best_lag"]["correlation"] == pytest.approx(-0.959, rel=0.01)
-        assert result["best_lag"]["p_value"] == pytest.approx(0.0, abs=0.001)
+        assert result["best_lag"]["correlation"] == pytest.approx(-0.742, rel=0.01)
+        assert result["best_lag"]["p_value"] == pytest.approx(0.022, rel=0.1)
         assert result["best_lag"]["n_pairs"] == 9
         assert result["narrative"] == (
             "When spending increases, outcome tends to decrease in the same year. "
-            "This is a very strong relationship (r=-0.96) and is statistically reliable (p=0.000), "
+            "This is a very strong relationship (r=-0.74) and is statistically reliable (p=0.022), "
             "based on 9 year-over-year comparisons."
         )
 
@@ -499,13 +505,13 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
         assert result["method"] == "lagged_correlation"
         assert result["best_lag"]["lag"] == 0
-        assert result["best_lag"]["correlation"] == pytest.approx(-0.559, rel=0.01)
-        assert result["best_lag"]["p_value"] == pytest.approx(0.118, rel=0.01)
+        assert result["best_lag"]["correlation"] == pytest.approx(-0.566, rel=0.01)
+        assert result["best_lag"]["p_value"] == pytest.approx(0.112, rel=0.1)
         assert result["best_lag"]["n_pairs"] == 9
         assert result["narrative"] == (
             "No reliable relationship was detected between changes in spending and outcome. "
-            "While the data suggests a strong negative pattern (r=-0.56), this could be due to chance "
-            "given the limited sample size (n=9 change pairs, p=0.12)."
+            "While the data suggests a strong negative pattern (r=-0.57), this could be due to chance "
+            "given the limited sample size (n=9 change pairs, p=0.11)."
         )
 
     def test_falls_back_to_comovement_below_threshold(self):

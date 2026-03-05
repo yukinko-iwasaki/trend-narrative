@@ -73,9 +73,11 @@ def compute_yoy_changes(
     values: np.ndarray
 ) -> np.ndarray:
     """
-    Compute year-on-year changes, handling gaps by annualizing.
+    Compute annualized year-on-year percentage changes.
 
-    Returns array of annualized changes (change per year).
+    Returns array of annualized percentage changes. For a 2-year gap with
+    20% total change, returns 10% (annualized). Returns NaN for changes
+    from near-zero base values.
     """
     if len(years) < 2:
         return np.array([])
@@ -86,9 +88,16 @@ def compute_yoy_changes(
 
     year_gaps = np.diff(years_sorted)
     value_diffs = np.diff(values_sorted)
+    base_values = values_sorted[:-1]
 
-    # Annualize to make changes comparable across different gap sizes
-    return value_diffs / year_gaps
+    # Use percentage change, annualized
+    # Handle near-zero base values to avoid division issues
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pct_changes = (value_diffs / base_values) / year_gaps
+        # Set to NaN where base value is effectively zero
+        pct_changes[np.abs(base_values) < 1e-10] = np.nan
+
+    return pct_changes
 
 
 def interpolate_at_years(
