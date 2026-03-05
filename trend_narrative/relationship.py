@@ -191,6 +191,8 @@ def analyze_segment_comovement(
         "start_year": int(start_year),
         "end_year": int(end_year),
         "reference_direction": get_direction_from_slope(segment["slope"]),
+        "reference_start": segment["start_value"],
+        "reference_end": segment["end_value"],
         "comparison_n_points": n_points,
         "comparison_direction": get_direction(np.array([comp_start, comp_end])) if can_calc_direction else None,
         "comparison_start": comp_start,
@@ -309,10 +311,17 @@ def _insufficient_data_result(
     }
 
 
+def _format_value(value: float, fmt: str) -> str:
+    """Format a numeric value using the given format spec."""
+    return f"{value:{fmt}}"
+
+
 def _build_comovement_narrative(
     segment_details: list[dict],
     reference_name: str,
     comparison_name: str,
+    reference_format: str = ".2f",
+    comparison_format: str = ".2f",
 ) -> str:
     """Build narrative from segment-level co-movement analysis."""
     if not segment_details:
@@ -326,19 +335,28 @@ def _build_comovement_narrative(
         comp_dir = seg["comparison_direction"]
         comp_n = seg["comparison_n_points"]
 
+        ref_start = _format_value(seg["reference_start"], reference_format)
+        ref_end = _format_value(seg["reference_end"], reference_format)
+
         if comp_dir is None:
             if comp_n == 0:
                 seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir}, "
+                    f"{period}, {reference_name} {ref_dir} "
+                    f"({ref_start} to {ref_end}), "
                     f"but {comparison_name} data is unavailable for this period"
                 )
             else:
                 # n == 1
+                comp_start = _format_value(seg["comparison_start"], comparison_format)
                 seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir}, "
-                    f"with only one {comparison_name} observation ({seg['comparison_start']:.2f})"
+                    f"{period}, {reference_name} {ref_dir} "
+                    f"({ref_start} to {ref_end}), "
+                    f"with only one {comparison_name} observation ({comp_start})"
                 )
         else:
+            comp_start = _format_value(seg["comparison_start"], comparison_format)
+            comp_end = _format_value(seg["comparison_end"], comparison_format)
+
             # Describe co-movement
             if ref_dir == comp_dir:
                 relationship = "both moving in the same direction"
@@ -349,13 +367,15 @@ def _build_comovement_narrative(
 
             if relationship:
                 seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} while {comparison_name} {comp_dir} "
-                    f"({seg['comparison_start']:.2f} to {seg['comparison_end']:.2f}), {relationship}"
+                    f"{period}, {reference_name} {ref_dir} ({ref_start} to {ref_end}) "
+                    f"while {comparison_name} {comp_dir} "
+                    f"({comp_start} to {comp_end}), {relationship}"
                 )
             else:
                 seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} while {comparison_name} {comp_dir} "
-                    f"({seg['comparison_start']:.2f} to {seg['comparison_end']:.2f})"
+                    f"{period}, {reference_name} {ref_dir} ({ref_start} to {ref_end}) "
+                    f"while {comparison_name} {comp_dir} "
+                    f"({comp_start} to {comp_end})"
                 )
 
         # Capitalize first letter (each segment becomes a sentence)
@@ -443,6 +463,8 @@ def get_relationship_narrative(
     reference_segments: Optional[list[dict]] = None,
     correlation_threshold: int = DEFAULT_CORRELATION_THRESHOLD,
     max_lag_cap: int = DEFAULT_MAX_LAG_CAP,
+    reference_format: str = ".2f",
+    comparison_format: str = ".2f",
 ) -> dict:
     """
     Analyze relationship between two time series.
@@ -477,6 +499,10 @@ def get_relationship_narrative(
     max_lag_cap : int
         Maximum lag to test in years (default 5). Actual max lag may be
         lower if data is insufficient.
+    reference_format : str
+        Format spec for reference series values in narratives (default ".2f").
+    comparison_format : str
+        Format spec for comparison series values in narratives (default ".2f").
 
     Returns
     -------
@@ -571,7 +597,8 @@ def get_relationship_narrative(
     ]
 
     narrative = _build_comovement_narrative(
-        segment_details, reference_name, comparison_name
+        segment_details, reference_name, comparison_name,
+        reference_format=reference_format, comparison_format=comparison_format
     )
 
     return {

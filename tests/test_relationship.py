@@ -405,8 +405,8 @@ class TestRelationshipNarrativeComovement:
         )
         assert result["method"] == "comovement"
         assert result["narrative"] == (
-            "From 2010 to 2020, health spending increased while UHC index increased "
-            "(50.00 to 80.00), both moving in the same direction. "
+            "From 2010 to 2020, health spending increased (100.00 to 150.00) "
+            "while UHC index increased (50.00 to 80.00), both moving in the same direction. "
             "With only 3 UHC index observations, a statistical relationship cannot be established."
         )
 
@@ -425,8 +425,8 @@ class TestRelationshipNarrativeComovement:
         )
         assert result["method"] == "comovement"
         assert result["narrative"] == (
-            "From 2010 to 2020, spending increased while outcome decreased "
-            "(80.00 to 50.00), moving in opposite directions. "
+            "From 2010 to 2020, spending increased (100.00 to 150.00) "
+            "while outcome decreased (80.00 to 50.00), moving in opposite directions. "
             "With only 3 outcome observations, a statistical relationship cannot be established."
         )
 
@@ -452,10 +452,10 @@ class TestRelationshipNarrativeComovement:
         assert len(result["segment_details"]) == 2
         # Values are interpolated at segment boundaries (2015 → 62.50)
         assert result["narrative"] == (
-            "From 2010 to 2015, spending increased while outcome increased "
-            "(50.00 to 62.50), both moving in the same direction. "
-            "From 2015 to 2020, spending decreased while outcome increased "
-            "(62.50 to 70.00), moving in opposite directions. "
+            "From 2010 to 2015, spending increased (100.00 to 125.00) "
+            "while outcome increased (50.00 to 62.50), both moving in the same direction. "
+            "From 2015 to 2020, spending decreased (100.00 to 85.00) "
+            "while outcome increased (62.50 to 70.00), moving in opposite directions. "
             "With only 4 outcome observations, a statistical relationship cannot be established."
         )
 
@@ -479,9 +479,10 @@ class TestRelationshipNarrativeComovement:
         )
         assert result["method"] == "comovement"
         assert result["narrative"] == (
-            "From 2010 to 2015, spending increased while outcome increased "
-            "(50.00 to 60.00), both moving in the same direction. "
-            "From 2015 to 2020, spending decreased, but outcome data is unavailable for this period. "
+            "From 2010 to 2015, spending increased (100.00 to 125.00) "
+            "while outcome increased (50.00 to 60.00), both moving in the same direction. "
+            "From 2015 to 2020, spending decreased (100.00 to 85.00), "
+            "but outcome data is unavailable for this period. "
             "With only 3 outcome observations, a statistical relationship cannot be established."
         )
 
@@ -730,3 +731,66 @@ class TestRelationshipNarrativeReturnStructure:
         assert result["best_lag"] is None
         assert result["all_lags"] is None
         assert result["max_lag_tested"] is None
+
+
+# ---------------------------------------------------------------------------
+# get_relationship_narrative - number formatting
+# ---------------------------------------------------------------------------
+
+class TestRelationshipNarrativeNumberFormatting:
+    ref_years = np.array([2010, 2015, 2020])
+    ref_values = np.array([1000.55, 1250.75, 1500.25])
+    comp_years = np.array([2012, 2015, 2018])
+    comp_values = np.array([0.5055, 0.6575, 0.8025])
+
+    def test_default_format(self):
+        result = get_relationship_narrative(
+            reference_years=self.ref_years,
+            reference_values=self.ref_values,
+            comparison_years=self.comp_years,
+            comparison_values=self.comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+        )
+        assert "(1000.55 to 1500.25)" in result["narrative"]
+        assert "(0.51 to 0.80)" in result["narrative"]
+
+    def test_custom_reference_format(self):
+        result = get_relationship_narrative(
+            reference_years=self.ref_years,
+            reference_values=self.ref_values,
+            comparison_years=self.comp_years,
+            comparison_values=self.comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            reference_format=",.0f",
+        )
+        assert "(1,001 to 1,500)" in result["narrative"]
+        assert "(0.51 to 0.80)" in result["narrative"]
+
+    def test_custom_comparison_format(self):
+        result = get_relationship_narrative(
+            reference_years=self.ref_years,
+            reference_values=self.ref_values,
+            comparison_years=self.comp_years,
+            comparison_values=self.comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            comparison_format=".1%",
+        )
+        assert "(1000.55 to 1500.25)" in result["narrative"]
+        assert "(50.5% to 80.2%)" in result["narrative"]
+
+    def test_separate_formats(self):
+        result = get_relationship_narrative(
+            reference_years=self.ref_years,
+            reference_values=self.ref_values,
+            comparison_years=self.comp_years,
+            comparison_values=self.comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            reference_format=",.0f",
+            comparison_format=".1%",
+        )
+        assert "(1,001 to 1,500)" in result["narrative"]
+        assert "(50.5% to 80.2%)" in result["narrative"]
