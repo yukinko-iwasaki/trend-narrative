@@ -7,8 +7,8 @@ from a reference series to align analysis of a comparison series.
 Supports two analysis modes based on data availability:
 - Co-movement narrative: When data points < threshold, describes directional
   alignment within each segment of the reference series.
-- Correlation analysis: When sufficient data points exist, computes
-  year-on-year change correlation to account for shared trends.
+- Lagged correlation analysis: When sufficient data points exist, computes
+  year-on-year change correlation at multiple lags to detect delayed effects.
 """
 
 from __future__ import annotations
@@ -27,8 +27,9 @@ CORRELATION_THRESHOLDS = {
     1.0: "very strong",
 }
 
-DEFAULT_THRESHOLD_HIGH = 8
-DEFAULT_THRESHOLD_LOW = 3
+THRESHOLD_LOW = 3  # Minimum for any analysis (need 2+ changes to compare)
+DEFAULT_CORRELATION_THRESHOLD = 5  # Minimum for correlation (need enough change pairs)
+DEFAULT_MAX_LAG_CAP = 5  # Domain-appropriate limit for policy effects
 
 
 def get_direction(values: np.ndarray) -> str:
@@ -42,6 +43,7 @@ def get_direction(values: np.ndarray) -> str:
 
     pct_change = (end - start) / abs(start)
 
+    # Less than 5% change is considered stable to avoid overstating minor fluctuations
     if abs(pct_change) < 0.05:
         return "remained stable"
     return "increased" if pct_change > 0 else "decreased"
@@ -84,7 +86,31 @@ def compute_yoy_changes(
     year_gaps = np.diff(years_sorted)
     value_diffs = np.diff(values_sorted)
 
+    # Annualize to make changes comparable across different gap sizes
     return value_diffs / year_gaps
+
+
+def interpolate_at_years(
+    source_years: np.ndarray,
+    source_values: np.ndarray,
+    target_years: np.ndarray,
+) -> np.ndarray:
+    """
+    Linearly interpolate source series to get values at target years.
+
+    Years outside source range return NaN.
+    """
+    sorted_idx = np.argsort(source_years)
+    source_years_sorted = source_years[sorted_idx]
+    source_values_sorted = source_values[sorted_idx]
+
+    return np.interp(
+        target_years,
+        source_years_sorted,
+        source_values_sorted,
+        left=np.nan,
+        right=np.nan,
+    )
 
 
 def analyze_segment_comovement(
@@ -125,6 +151,96 @@ def analyze_segment_comovement(
         result["comparison_end"] = float(seg_values_sorted[-1])
 
     return result
+
+
+def compute_lagged_correlation(
+    sparse_years: np.ndarray,
+    sparse_values: np.ndarray,
+    dense_years: np.ndarray,
+    dense_values: np.ndarray,
+    lag: int,
+) -> Optional[dict]:
+    """
+    Compute correlation between changes at a specific lag.
+
+    Correlates sparse series changes with dense series changes from `lag` years prior.
+    Uses interpolation to get dense values at (sparse_years - lag).
+
+    Returns dict with correlation, p_value, n_pairs, or None if insufficient data.
+    """
+    # Interpolate dense series at lagged years
+    target_years = sparse_years - lag
+    dense_at_lag = interpolate_at_years(dense_years, dense_values, target_years)
+
+    # Remove any NaN (years outside dense range)
+    valid_mask = ~np.isnan(dense_at_lag)
+    if np.sum(valid_mask) < 2:
+        return None
+
+    valid_sparse_years = sparse_years[valid_mask]
+    valid_sparse_values = sparse_values[valid_mask]
+    valid_dense_values = dense_at_lag[valid_mask]
+
+    # Sort by year
+    sort_idx = np.argsort(valid_sparse_years)
+    years_sorted = valid_sparse_years[sort_idx]
+    sparse_sorted = valid_sparse_values[sort_idx]
+    dense_sorted = valid_dense_values[sort_idx]
+
+    # Compute changes
+    sparse_changes = compute_yoy_changes(years_sorted, sparse_sorted)
+    dense_changes = compute_yoy_changes(years_sorted, dense_sorted)
+
+    n_pairs = len(sparse_changes)
+    if n_pairs < 2:
+        return None
+
+    correlation, p_value = stats.pearsonr(dense_changes, sparse_changes)
+    if np.isnan(correlation):
+        return None
+
+    return {
+        "correlation": float(correlation),
+        "p_value": float(p_value),
+        "n_pairs": n_pairs,
+    }
+
+
+def compute_all_lagged_correlations(
+    sparse_years: np.ndarray,
+    sparse_values: np.ndarray,
+    dense_years: np.ndarray,
+    dense_values: np.ndarray,
+    max_lag: int,
+) -> list[dict]:
+    """
+    Compute correlations at all lags from 0 to max_lag.
+
+    Returns list of lag results (with lag field added), excluding any that failed.
+    """
+    results = []
+    for lag in range(max_lag + 1):
+        result = compute_lagged_correlation(
+            sparse_years, sparse_values,
+            dense_years, dense_values,
+            lag
+        )
+        if result is not None:
+            result["lag"] = lag
+            results.append(result)
+    return results
+
+
+def find_best_lag(lag_results: list[dict], p_threshold: float = 0.10) -> Optional[dict]:
+    """Find the lag with strongest correlation, preferring significant results."""
+    if not lag_results:
+        return None
+
+    # Prefer significant results
+    significant = [r for r in lag_results if r["p_value"] < p_threshold]
+    candidates = significant if significant else lag_results
+
+    return max(candidates, key=lambda x: abs(x["correlation"]))
 
 
 def _build_comovement_narrative(
@@ -190,30 +306,41 @@ def _build_comovement_narrative(
 
     # Add caveat about limited data
     total_comparison_points = sum(seg["comparison_n_points"] for seg in segment_details)
-    if total_comparison_points < DEFAULT_THRESHOLD_HIGH:
-        narrative += (
-            f" With only {total_comparison_points} {comparison_name} observations, "
-            "a statistical relationship cannot be established."
-        )
+    narrative += (
+        f" With only {total_comparison_points} {comparison_name} observations, "
+        "a statistical relationship cannot be established."
+    )
 
     return narrative
 
 
-def _build_correlation_narrative(
-    correlation: float,
-    p_value: float,
-    n_points: int,
+def _build_lagged_correlation_narrative(
+    best_lag: dict,
+    all_lags: list[dict],
+    n_sparse: int,
+    max_lag_tested: int,
     reference_name: str,
     comparison_name: str,
 ) -> str:
-    """Build narrative from year-on-year change correlation analysis."""
+    """Build narrative from lagged correlation analysis."""
+    correlation = best_lag["correlation"]
+    p_value = best_lag["p_value"]
+    lag = best_lag["lag"]
+    n_pairs = best_lag["n_pairs"]
+
     strength = get_correlation_strength(correlation)
     direction = "positive" if correlation > 0 else "negative"
+
+    # Lag description
+    if lag == 0:
+        lag_desc = "contemporaneously (no lag)"
+    else:
+        lag_desc = f"with a {lag}-year lag"
 
     if strength == "no":
         narrative = (
             f"Year-on-year changes in {reference_name} and {comparison_name} "
-            f"show no significant correlation (r={correlation:.2f}, n={n_points}), "
+            f"show no significant correlation at any lag tested (0-{max_lag_tested} years), "
             "suggesting changes in one are not associated with changes in the other."
         )
     else:
@@ -226,14 +353,40 @@ def _build_correlation_narrative(
 
         narrative = (
             f"Year-on-year changes in {reference_name} and {comparison_name} "
-            f"show a {strength} {direction} correlation (r={correlation:.2f}, p={p_value:.3f}, n={n_points}), "
+            f"show the strongest association {lag_desc}, "
+            f"with a {strength} {direction} correlation "
+            f"(r={correlation:.2f}, p={p_value:.3f}, n={n_pairs} change pairs), "
             f"which is {significance}. "
         )
 
-        if correlation > 0:
-            narrative += f"This suggests that increases in {reference_name} tend to coincide with increases in {comparison_name}."
+        if lag > 0:
+            if correlation > 0:
+                narrative += (
+                    f"When {reference_name} increases, {comparison_name} tends to "
+                    f"increase about {lag} year{'s' if lag > 1 else ''} later."
+                )
+            else:
+                narrative += (
+                    f"When {reference_name} increases, {comparison_name} tends to "
+                    f"decrease about {lag} year{'s' if lag > 1 else ''} later."
+                )
         else:
-            narrative += f"This suggests that increases in {reference_name} tend to coincide with decreases in {comparison_name}."
+            if correlation > 0:
+                narrative += (
+                    f"When {reference_name} increases, {comparison_name} tends to "
+                    f"increase in the same year."
+                )
+            else:
+                narrative += (
+                    f"When {reference_name} increases, {comparison_name} tends to "
+                    f"decrease in the same year."
+                )
+
+    # Add data limitation note
+    narrative += (
+        f" This analysis is based on {n_sparse} observations and assumes "
+        "approximately linear change between data points."
+    )
 
     return narrative
 
@@ -246,15 +399,18 @@ def get_relationship_narrative(
     comparison_name: str,
     reference_years: Optional["array-like"] = None,
     reference_values: Optional["array-like"] = None,
-    threshold_high: int = DEFAULT_THRESHOLD_HIGH,
-    threshold_low: int = DEFAULT_THRESHOLD_LOW,
+    correlation_threshold: int = DEFAULT_CORRELATION_THRESHOLD,
+    max_lag_cap: int = DEFAULT_MAX_LAG_CAP,
 ) -> dict:
     """
     Analyze relationship between two time series.
 
     Uses pre-computed segments from the reference series to align
     analysis of the comparison series. Chooses analysis method based
-    on data availability.
+    on data availability:
+    - Insufficient data: < 3 points
+    - Comovement: >= 3 but < correlation_threshold points
+    - Lagged correlation: >= correlation_threshold points
 
     Parameters
     ----------
@@ -273,33 +429,36 @@ def get_relationship_narrative(
         Year values for reference series. Required for correlation analysis.
     reference_values : array-like, optional
         Data values for reference series. Required for correlation analysis.
-    threshold_high : int
-        Minimum overlapping data points to use correlation analysis (default 8).
-    threshold_low : int
-        Minimum data points to produce any analysis (default 3).
+    correlation_threshold : int
+        Minimum points to use correlation analysis (default 5).
+        Below this, comovement analysis is used.
+    max_lag_cap : int
+        Maximum lag to test in years (default 5). Actual max lag may be
+        lower if data is insufficient.
 
     Returns
     -------
     dict
         Keys:
         - narrative: str, human-readable description
-        - method: str, one of "insufficient_data", "comovement", "correlation"
-        - n_points: int, number of overlapping data points
+        - method: str, one of "insufficient_data", "comovement", "lagged_correlation"
+        - n_points: int, number of data points in sparser series
         - segment_details: list[dict], per-segment analysis (comovement only)
-        - correlation: float, correlation coefficient (correlation only)
-        - p_value: float, p-value for correlation (correlation only)
+        - best_lag: dict with lag, correlation, p_value, n_pairs (correlation only)
+        - all_lags: list[dict], results for all tested lags (correlation only)
+        - max_lag_tested: int, maximum lag that was tested (correlation only)
     """
     comparison_years = np.asarray(comparison_years, dtype=float)
     comparison_values = np.asarray(comparison_values, dtype=float)
 
-    # Remove NaN values
+    # Remove NaN values from comparison
     valid_mask = ~np.isnan(comparison_values)
     comparison_years = comparison_years[valid_mask]
     comparison_values = comparison_values[valid_mask]
 
     n_comparison = len(comparison_values)
 
-    # Determine overlapping points if reference data provided
+    # Process reference data if provided
     if reference_years is not None and reference_values is not None:
         reference_years = np.asarray(reference_years, dtype=float)
         reference_values = np.asarray(reference_values, dtype=float)
@@ -308,71 +467,77 @@ def get_relationship_narrative(
         reference_years = reference_years[valid_mask]
         reference_values = reference_values[valid_mask]
 
-        # Find overlapping years
-        common_years = np.intersect1d(reference_years, comparison_years)
-        n_overlap = len(common_years)
-    else:
-        n_overlap = n_comparison
+    n_reference = len(reference_years) if reference_years is not None else 0
 
-    # Insufficient data
-    if n_comparison < threshold_low or not reference_segments:
+    # Correlation is limited by the sparser series; identify which is which
+    # so we can interpolate the dense series at sparse series years
+    if n_comparison <= n_reference:
+        sparse_years, sparse_values = comparison_years, comparison_values
+        dense_years, dense_values = reference_years, reference_values
+    else:
+        sparse_years, sparse_values = reference_years, reference_values
+        dense_years, dense_values = comparison_years, comparison_values
+
+    n_sparse = len(sparse_years) if sparse_years is not None else n_comparison
+
+    # Insufficient data (hardcoded threshold)
+    if n_sparse < THRESHOLD_LOW or not reference_segments:
         return {
             "narrative": (
                 f"The relationship between {reference_name} and {comparison_name} "
                 "cannot be determined due to limited data availability."
             ),
             "method": "insufficient_data",
-            "n_points": n_comparison,
+            "n_points": n_sparse,
             "segment_details": None,
-            "correlation": None,
-            "p_value": None,
+            "best_lag": None,
+            "all_lags": None,
+            "max_lag_tested": None,
         }
 
-    # Correlation analysis path (sufficient overlapping data)
-    if (n_overlap >= threshold_high and
+    # Check if correlation analysis is possible
+    can_do_correlation = (
+        n_sparse >= correlation_threshold and
         reference_years is not None and
-        reference_values is not None):
+        reference_values is not None and
+        dense_years is not None and
+        dense_values is not None
+    )
 
-        # Get values for common years
-        ref_mask = np.isin(reference_years, common_years)
-        comp_mask = np.isin(comparison_years, common_years)
+    if can_do_correlation:
+        # Higher lags reduce usable data points; limit max lag to ensure
+        # we still have enough change pairs for meaningful correlation
+        n_changes = n_sparse - 1
+        min_pairs_needed = correlation_threshold - 1
+        max_testable_lag = max(0, n_changes - min_pairs_needed)
+        max_lag = min(max_testable_lag, max_lag_cap)
 
-        ref_common_years = reference_years[ref_mask]
-        ref_common_values = reference_values[ref_mask]
-        comp_common_years = comparison_years[comp_mask]
-        comp_common_values = comparison_values[comp_mask]
+        # Compute correlations at all lags
+        lag_results = compute_all_lagged_correlations(
+            sparse_years, sparse_values,
+            dense_years, dense_values,
+            max_lag
+        )
 
-        # Sort both by year
-        ref_sort_idx = np.argsort(ref_common_years)
-        comp_sort_idx = np.argsort(comp_common_years)
+        if lag_results:
+            best_lag = find_best_lag(lag_results)
 
-        ref_common_values = ref_common_values[ref_sort_idx]
-        comp_common_values = comp_common_values[comp_sort_idx]
-        common_years_sorted = ref_common_years[ref_sort_idx]
-
-        # Compute year-on-year changes
-        ref_changes = compute_yoy_changes(common_years_sorted, ref_common_values)
-        comp_changes = compute_yoy_changes(common_years_sorted, comp_common_values)
-
-        if len(ref_changes) >= 2 and len(comp_changes) >= 2:
-            # Pearson correlation on changes
-            correlation, p_value = stats.pearsonr(ref_changes, comp_changes)
-
-            narrative = _build_correlation_narrative(
-                correlation, p_value, len(ref_changes),
+            narrative = _build_lagged_correlation_narrative(
+                best_lag, lag_results, n_sparse, max_lag,
                 reference_name, comparison_name
             )
 
             return {
                 "narrative": narrative,
-                "method": "correlation",
-                "n_points": n_overlap,
+                "method": "lagged_correlation",
+                "n_points": n_sparse,
                 "segment_details": None,
-                "correlation": float(correlation),
-                "p_value": float(p_value),
+                "best_lag": best_lag,
+                "all_lags": lag_results,
+                "max_lag_tested": max_lag,
             }
 
-    # Co-movement analysis path (limited data)
+    # Fall back to comovement analysis
     segment_details = [
         analyze_segment_comovement(seg, comparison_years, comparison_values)
         for seg in reference_segments
@@ -385,8 +550,9 @@ def get_relationship_narrative(
     return {
         "narrative": narrative,
         "method": "comovement",
-        "n_points": n_comparison,
+        "n_points": n_sparse,
         "segment_details": segment_details,
-        "correlation": None,
-        "p_value": None,
+        "best_lag": None,
+        "all_lags": None,
+        "max_lag_tested": None,
     }

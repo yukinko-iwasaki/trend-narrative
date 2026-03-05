@@ -9,6 +9,11 @@ from trend_narrative.relationship import (
     get_correlation_strength,
     compute_yoy_changes,
     analyze_segment_comovement,
+    interpolate_at_years,
+    compute_lagged_correlation,
+    compute_all_lagged_correlations,
+    find_best_lag,
+    DEFAULT_CORRELATION_THRESHOLD,
 )
 
 
@@ -102,6 +107,164 @@ class TestComputeYoyChanges:
         values = np.array([120, 100, 110])
         changes = compute_yoy_changes(years, values)
         np.testing.assert_array_equal(changes, [10, 10])
+
+
+# ---------------------------------------------------------------------------
+# interpolate_at_years
+# ---------------------------------------------------------------------------
+
+class TestInterpolateAtYears:
+    def test_exact_years(self):
+        source_years = np.array([2010, 2012, 2014, 2016])
+        source_values = np.array([100, 120, 140, 160])
+        target_years = np.array([2010, 2014, 2016])
+        result = interpolate_at_years(source_years, source_values, target_years)
+        np.testing.assert_array_almost_equal(result, [100, 140, 160])
+
+    def test_interpolated_years(self):
+        source_years = np.array([2010, 2014])
+        source_values = np.array([100, 140])
+        target_years = np.array([2011, 2012, 2013])
+        result = interpolate_at_years(source_years, source_values, target_years)
+        np.testing.assert_array_almost_equal(result, [110, 120, 130])
+
+    def test_outside_range_returns_nan(self):
+        source_years = np.array([2012, 2014, 2016])
+        source_values = np.array([120, 140, 160])
+        target_years = np.array([2010, 2013, 2018])
+        result = interpolate_at_years(source_years, source_values, target_years)
+        assert np.isnan(result[0])
+        assert result[1] == 130
+        assert np.isnan(result[2])
+
+    def test_unsorted_source(self):
+        source_years = np.array([2014, 2010, 2012])
+        source_values = np.array([140, 100, 120])
+        target_years = np.array([2011, 2013])
+        result = interpolate_at_years(source_years, source_values, target_years)
+        np.testing.assert_array_almost_equal(result, [110, 130])
+
+
+# ---------------------------------------------------------------------------
+# compute_lagged_correlation
+# ---------------------------------------------------------------------------
+
+class TestComputeLaggedCorrelation:
+    # Shared test data
+    sparse_years = np.array([2010, 2011, 2012, 2013, 2014])
+    sparse_values = np.array([50, 55, 62, 68, 75], dtype=float)
+    dense_years = np.array([2009, 2010, 2011, 2012, 2013, 2014])
+    dense_values = np.array([95, 100, 110, 125, 138, 150], dtype=float)
+
+    def test_lag_zero(self):
+        result = compute_lagged_correlation(
+            self.sparse_years, self.sparse_values,
+            self.dense_years, self.dense_values,
+            lag=0
+        )
+        assert result is not None
+        assert result["n_pairs"] == 4
+        assert result["correlation"] == pytest.approx(0.753, rel=0.01)
+        assert result["p_value"] == pytest.approx(0.247, rel=0.01)
+
+    def test_lag_one(self):
+        result = compute_lagged_correlation(
+            self.sparse_years, self.sparse_values,
+            self.dense_years, self.dense_values,
+            lag=1
+        )
+        assert result is not None
+        assert result["n_pairs"] == 4
+        assert result["correlation"] == pytest.approx(0.580, rel=0.01)
+        assert result["p_value"] == pytest.approx(0.420, rel=0.01)
+
+    def test_insufficient_overlap(self):
+        result = compute_lagged_correlation(
+            self.sparse_years[:2], self.sparse_values[:2],
+            self.dense_years[:2], self.dense_values[:2],
+            lag=0
+        )
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# compute_all_lagged_correlations
+# ---------------------------------------------------------------------------
+
+class TestComputeAllLaggedCorrelations:
+    def test_multiple_lags(self):
+        sparse_years = np.array([2010, 2011, 2012, 2013, 2014, 2015, 2016])
+        sparse_values = np.array([50, 58, 62, 72, 75, 88, 90], dtype=float)
+        dense_years = np.arange(2005, 2020)
+        dense_values = np.array([50, 60, 65, 78, 85, 100, 108, 125, 130, 148, 155, 175, 180, 200, 210], dtype=float)
+
+        results = compute_all_lagged_correlations(
+            sparse_years, sparse_values,
+            dense_years, dense_values,
+            max_lag=3
+        )
+        assert len(results) == 4
+        lags = [r["lag"] for r in results]
+        assert lags == [0, 1, 2, 3]
+
+    def test_empty_if_no_valid_lags(self):
+        sparse_years = np.array([2020, 2021])
+        sparse_values = np.array([50, 55], dtype=float)
+        dense_years = np.array([2010, 2011])
+        dense_values = np.array([100, 110], dtype=float)
+
+        results = compute_all_lagged_correlations(
+            sparse_years, sparse_values,
+            dense_years, dense_values,
+            max_lag=2
+        )
+        assert len(results) == 0
+
+
+# ---------------------------------------------------------------------------
+# find_best_lag
+# ---------------------------------------------------------------------------
+
+class TestFindBestLag:
+    def test_selects_strongest_significant_correlation(self):
+        lag_results = [
+            {"lag": 0, "correlation": 0.3, "p_value": 0.08, "n_pairs": 5},
+            {"lag": 1, "correlation": 0.8, "p_value": 0.01, "n_pairs": 4},
+            {"lag": 2, "correlation": 0.5, "p_value": 0.05, "n_pairs": 3},
+        ]
+        best = find_best_lag(lag_results)
+        assert best["lag"] == 1
+        assert best["correlation"] == 0.8
+
+    def test_prefers_significant_over_stronger_insignificant(self):
+        lag_results = [
+            {"lag": 0, "correlation": 0.6, "p_value": 0.05, "n_pairs": 5},
+            {"lag": 2, "correlation": 0.9, "p_value": 0.30, "n_pairs": 3},
+        ]
+        best = find_best_lag(lag_results)
+        assert best["lag"] == 0
+        assert best["correlation"] == 0.6
+
+    def test_falls_back_to_strongest_if_none_significant(self):
+        lag_results = [
+            {"lag": 0, "correlation": 0.5, "p_value": 0.20, "n_pairs": 4},
+            {"lag": 1, "correlation": 0.8, "p_value": 0.15, "n_pairs": 3},
+        ]
+        best = find_best_lag(lag_results)
+        assert best["lag"] == 1
+        assert best["correlation"] == 0.8
+
+    def test_considers_absolute_value(self):
+        lag_results = [
+            {"lag": 0, "correlation": 0.5, "p_value": 0.05, "n_pairs": 5},
+            {"lag": 1, "correlation": -0.9, "p_value": 0.001, "n_pairs": 4},
+        ]
+        best = find_best_lag(lag_results)
+        assert best["lag"] == 1
+        assert best["correlation"] == -0.9
+
+    def test_empty_returns_none(self):
+        assert find_best_lag([]) is None
 
 
 # ---------------------------------------------------------------------------
@@ -260,14 +423,13 @@ class TestRelationshipNarrativeComovement:
 
 
 # ---------------------------------------------------------------------------
-# get_relationship_narrative - correlation path
+# get_relationship_narrative - lagged correlation path
 # ---------------------------------------------------------------------------
 
-class TestRelationshipNarrativeCorrelation:
+class TestRelationshipNarrativeLaggedCorrelation:
     def test_positive_correlation(self):
         segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
-        # Add variation to avoid constant changes
         ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
         comp_values = np.array([50, 55, 58, 65, 68, 75, 78, 85, 90, 98], dtype=float)
 
@@ -279,17 +441,25 @@ class TestRelationshipNarrativeCorrelation:
             comparison_name="outcome",
             reference_years=years,
             reference_values=ref_values,
-            threshold_high=8,
+            correlation_threshold=8,
         )
-        assert result["method"] == "correlation"
-        assert result["correlation"] is not None
-        assert result["correlation"] > 0
-        assert "positive" in result["narrative"]
+        assert result["method"] == "lagged_correlation"
+        assert result["best_lag"]["lag"] == 0
+        assert result["best_lag"]["correlation"] == pytest.approx(0.968, rel=0.01)
+        assert result["best_lag"]["p_value"] == pytest.approx(0.0, abs=0.001)
+        assert result["best_lag"]["n_pairs"] == 9
+        assert result["narrative"] == (
+            "Year-on-year changes in spending and outcome show the strongest association "
+            "contemporaneously (no lag), with a very strong positive correlation "
+            "(r=0.97, p=0.000, n=9 change pairs), which is statistically significant. "
+            "When spending increases, outcome tends to increase in the same year. "
+            "This analysis is based on 10 observations and assumes approximately "
+            "linear change between data points."
+        )
 
     def test_negative_correlation(self):
         segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
-        # Add variation to avoid constant changes
         ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
         comp_values = np.array([100, 95, 92, 82, 80, 70, 68, 58, 52, 40], dtype=float)
 
@@ -301,13 +471,23 @@ class TestRelationshipNarrativeCorrelation:
             comparison_name="outcome",
             reference_years=years,
             reference_values=ref_values,
-            threshold_high=8,
+            correlation_threshold=8,
         )
-        assert result["method"] == "correlation"
-        assert result["correlation"] < 0
-        assert "negative" in result["narrative"]
+        assert result["method"] == "lagged_correlation"
+        assert result["best_lag"]["lag"] == 0
+        assert result["best_lag"]["correlation"] == pytest.approx(-0.959, rel=0.01)
+        assert result["best_lag"]["p_value"] == pytest.approx(0.0, abs=0.001)
+        assert result["best_lag"]["n_pairs"] == 9
+        assert result["narrative"] == (
+            "Year-on-year changes in spending and outcome show the strongest association "
+            "contemporaneously (no lag), with a very strong negative correlation "
+            "(r=-0.96, p=0.000, n=9 change pairs), which is statistically significant. "
+            "When spending increases, outcome tends to decrease in the same year. "
+            "This analysis is based on 10 observations and assumes approximately "
+            "linear change between data points."
+        )
 
-    def test_no_correlation(self):
+    def test_insignificant_correlation(self):
         segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
         ref_values = np.array([100, 105, 102, 108, 104, 110, 106, 112, 108, 114], dtype=float)
@@ -321,15 +501,27 @@ class TestRelationshipNarrativeCorrelation:
             comparison_name="outcome",
             reference_years=years,
             reference_values=ref_values,
-            threshold_high=8,
+            correlation_threshold=8,
         )
-        assert result["method"] == "correlation"
+        assert result["method"] == "lagged_correlation"
+        assert result["best_lag"]["lag"] == 0
+        assert result["best_lag"]["correlation"] == pytest.approx(-0.559, rel=0.01)
+        assert result["best_lag"]["p_value"] == pytest.approx(0.118, rel=0.01)
+        assert result["best_lag"]["n_pairs"] == 9
+        assert result["narrative"] == (
+            "Year-on-year changes in spending and outcome show the strongest association "
+            "contemporaneously (no lag), with a strong negative correlation "
+            "(r=-0.56, p=0.118, n=9 change pairs), which is not statistically significant. "
+            "When spending increases, outcome tends to decrease in the same year. "
+            "This analysis is based on 10 observations and assumes approximately "
+            "linear change between data points."
+        )
 
     def test_falls_back_to_comovement_below_threshold(self):
         segments = [_seg(2010, 2020, slope=5)]
-        years = np.array([2010, 2012, 2015, 2018, 2020])
-        ref_values = np.array([100, 110, 125, 140, 150], dtype=float)
-        comp_values = np.array([50, 55, 62, 70, 75], dtype=float)
+        years = np.array([2010, 2012, 2015, 2018])
+        ref_values = np.array([100, 110, 125, 140], dtype=float)
+        comp_values = np.array([50, 55, 62, 70], dtype=float)
 
         result = get_relationship_narrative(
             reference_segments=segments,
@@ -339,29 +531,67 @@ class TestRelationshipNarrativeCorrelation:
             comparison_name="outcome",
             reference_years=years,
             reference_values=ref_values,
-            threshold_high=8,
+            correlation_threshold=8,
         )
         assert result["method"] == "comovement"
 
-    def test_includes_p_value(self):
+    def test_symmetric_reference_sparser_than_comparison(self):
+        """When reference has fewer points than comparison, use reference to define periods."""
         segments = [_seg(2010, 2020, slope=5)]
-        years = np.arange(2010, 2020)
-        # Add variation to avoid constant changes
-        ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
-        comp_values = np.array([50, 55, 58, 65, 68, 75, 78, 85, 90, 98], dtype=float)
+        ref_years = np.array([2010, 2011, 2013, 2014, 2016, 2017, 2019, 2020])
+        ref_values = np.array([100, 108, 120, 128, 145, 152, 168, 175], dtype=float)
+        comp_years = np.arange(2010, 2021)
+        comp_values = np.array([50, 53, 56, 60, 64, 68, 72, 76, 81, 86, 92], dtype=float)
 
         result = get_relationship_narrative(
             reference_segments=segments,
-            comparison_years=years,
+            comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=years,
+            reference_years=ref_years,
             reference_values=ref_values,
-            threshold_high=8,
+            correlation_threshold=8,
         )
-        assert result["p_value"] is not None
-        assert 0 <= result["p_value"] <= 1
+        assert result["method"] == "lagged_correlation"
+
+    def test_lagged_effect_detection(self):
+        """Test that lagged effects can be detected."""
+        segments = [_seg(2010, 2025, slope=5)]
+        ref_years = np.arange(2010, 2025)
+        comp_years = np.arange(2010, 2025)
+        # Reference increases in specific years
+        ref_values = np.array([100, 100, 110, 110, 120, 120, 130, 130, 140, 140, 150, 150, 160, 160, 170], dtype=float)
+        # Comparison follows reference pattern with 2-year lag
+        comp_values = np.array([50, 50, 50, 50, 55, 55, 60, 60, 65, 65, 70, 70, 75, 75, 80], dtype=float)
+
+        result = get_relationship_narrative(
+            reference_segments=segments,
+            comparison_years=comp_years,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            reference_years=ref_years,
+            reference_values=ref_values,
+            correlation_threshold=8,
+            max_lag_cap=5,
+        )
+        assert result["method"] == "lagged_correlation"
+        assert result["best_lag"]["lag"] == 2
+        assert result["best_lag"]["correlation"] == pytest.approx(1.0, rel=0.01)
+        assert result["best_lag"]["p_value"] == pytest.approx(0.0, abs=0.001)
+        assert result["best_lag"]["n_pairs"] == 12
+        assert result["all_lags"] is not None
+        assert len(result["all_lags"]) == 6
+        assert result["max_lag_tested"] == 5
+        assert result["narrative"] == (
+            "Year-on-year changes in spending and outcome show the strongest association "
+            "with a 2-year lag, with a very strong positive correlation "
+            "(r=1.00, p=0.000, n=12 change pairs), which is statistically significant. "
+            "When spending increases, outcome tends to increase about 2 years later. "
+            "This analysis is based on 15 observations and assumes approximately "
+            "linear change between data points."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -403,14 +633,18 @@ class TestRelationshipNarrativeReturnStructure:
         assert "method" in result
         assert "n_points" in result
         assert "segment_details" in result
-        assert "correlation" in result
-        assert "p_value" in result
+        assert "best_lag" in result
+        assert "all_lags" in result
+        assert "max_lag_tested" in result
+        # For comovement, lag-related fields should be None
+        assert result["best_lag"] is None
+        assert result["all_lags"] is None
 
-    def test_correlation_return_keys(self):
+    def test_lagged_correlation_return_keys(self):
         segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
-        ref_values = 100 + 5 * np.arange(10).astype(float)
-        comp_values = 50 + 3 * np.arange(10).astype(float)
+        ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
+        comp_values = np.array([50, 55, 58, 65, 68, 75, 78, 85, 90, 98], dtype=float)
 
         result = get_relationship_narrative(
             reference_segments=segments,
@@ -420,10 +654,34 @@ class TestRelationshipNarrativeReturnStructure:
             comparison_name="outcome",
             reference_years=years,
             reference_values=ref_values,
-            threshold_high=8,
+            correlation_threshold=8,
         )
         assert "narrative" in result
         assert "method" in result
         assert "n_points" in result
-        assert "correlation" in result
-        assert "p_value" in result
+        assert "best_lag" in result
+        assert "all_lags" in result
+        assert "max_lag_tested" in result
+        # For lagged correlation, these should be populated
+        assert result["best_lag"] is not None
+        assert "lag" in result["best_lag"]
+        assert "correlation" in result["best_lag"]
+        assert "p_value" in result["best_lag"]
+        assert "n_pairs" in result["best_lag"]
+
+    def test_insufficient_data_return_keys(self):
+        segments = [_seg(2010, 2020, slope=5)]
+        comp_years = np.array([2012, 2015])
+        comp_values = np.array([50, 60])
+        result = get_relationship_narrative(
+            reference_segments=segments,
+            comparison_years=comp_years,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+        )
+        assert result["method"] == "insufficient_data"
+        assert result["segment_details"] is None
+        assert result["best_lag"] is None
+        assert result["all_lags"] is None
+        assert result["max_lag_tested"] is None
