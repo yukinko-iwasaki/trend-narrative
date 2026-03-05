@@ -253,6 +253,26 @@ def find_best_lag(lag_results: list[dict]) -> Optional[dict]:
     return max(candidates, key=lambda x: abs(x["correlation"]))
 
 
+def _insufficient_data_result(
+    reference_name: str,
+    comparison_name: str,
+    n_points: int,
+) -> dict:
+    """Return result dict for insufficient data cases."""
+    return {
+        "narrative": (
+            f"The relationship between {reference_name} and {comparison_name} "
+            "cannot be determined due to limited data availability."
+        ),
+        "method": "insufficient_data",
+        "n_points": n_points,
+        "segment_details": None,
+        "best_lag": None,
+        "all_lags": None,
+        "max_lag_tested": None,
+    }
+
+
 def _build_comovement_narrative(
     segment_details: list[dict],
     reference_name: str,
@@ -379,43 +399,43 @@ def _build_lagged_correlation_narrative(
 
 
 def get_relationship_narrative(
-    reference_segments: list[dict],
+    reference_years: "array-like",
+    reference_values: "array-like",
     comparison_years: "array-like",
     comparison_values: "array-like",
     reference_name: str,
     comparison_name: str,
-    reference_years: Optional["array-like"] = None,
-    reference_values: Optional["array-like"] = None,
+    reference_segments: Optional[list[dict]] = None,
     correlation_threshold: int = DEFAULT_CORRELATION_THRESHOLD,
     max_lag_cap: int = DEFAULT_MAX_LAG_CAP,
 ) -> dict:
     """
     Analyze relationship between two time series.
 
-    Uses pre-computed segments from the reference series to align
-    analysis of the comparison series. Chooses analysis method based
-    on data availability:
+    Segments can be provided directly or computed from reference data.
+    Chooses analysis method based on data availability:
     - Insufficient data: < 3 points
     - Comovement: >= 3 but < correlation_threshold points
     - Lagged correlation: >= correlation_threshold points
 
     Parameters
     ----------
-    reference_segments : list[dict]
-        Pre-computed segments from InsightExtractor for the reference series.
-        Each dict should contain: start_year, end_year, slope.
+    reference_years : array-like
+        Year values for reference series (the "driver" or spending series).
+    reference_values : array-like
+        Data values for reference series.
     comparison_years : array-like
-        Year values for the comparison series.
+        Year values for the comparison series (the outcome series).
     comparison_values : array-like
         Data values for the comparison series.
     reference_name : str
         Display name for the reference series.
     comparison_name : str
         Display name for the comparison series.
-    reference_years : array-like, optional
-        Year values for reference series. Required for correlation analysis.
-    reference_values : array-like, optional
-        Data values for reference series. Required for correlation analysis.
+    reference_segments : list[dict], optional
+        Pre-computed segments from InsightExtractor for the reference series.
+        Each dict should contain: start_year, end_year, slope.
+        If not provided, computed from reference_years/reference_values.
     correlation_threshold : int
         Minimum points to use correlation analysis (default 5).
         Below this, comovement analysis is used.
@@ -435,26 +455,22 @@ def get_relationship_narrative(
         - all_lags: list[dict], results for all tested lags (correlation only)
         - max_lag_tested: int, maximum lag that was tested (correlation only)
     """
+    reference_years = np.asarray(reference_years, dtype=float)
+    reference_values = np.asarray(reference_values, dtype=float)
     comparison_years = np.asarray(comparison_years, dtype=float)
     comparison_values = np.asarray(comparison_values, dtype=float)
 
-    # Remove NaN values from comparison
+    # Remove NaN values
+    valid_mask = ~np.isnan(reference_values)
+    reference_years = reference_years[valid_mask]
+    reference_values = reference_values[valid_mask]
+
     valid_mask = ~np.isnan(comparison_values)
     comparison_years = comparison_years[valid_mask]
     comparison_values = comparison_values[valid_mask]
 
+    n_reference = len(reference_values)
     n_comparison = len(comparison_values)
-
-    # Process reference data if provided
-    if reference_years is not None and reference_values is not None:
-        reference_years = np.asarray(reference_years, dtype=float)
-        reference_values = np.asarray(reference_values, dtype=float)
-
-        valid_mask = ~np.isnan(reference_values)
-        reference_years = reference_years[valid_mask]
-        reference_values = reference_values[valid_mask]
-
-    n_reference = len(reference_years) if reference_years is not None else 0
 
     # Correlation is limited by the sparser series; identify which is which
     # so we can interpolate the dense series at sparse series years
@@ -465,33 +481,14 @@ def get_relationship_narrative(
         sparse_years, sparse_values = reference_years, reference_values
         dense_years, dense_values = comparison_years, comparison_values
 
-    n_sparse = len(sparse_years) if sparse_years is not None else n_comparison
+    n_sparse = len(sparse_years)
 
-    # Insufficient data (hardcoded threshold)
-    if n_sparse < THRESHOLD_LOW or not reference_segments:
-        return {
-            "narrative": (
-                f"The relationship between {reference_name} and {comparison_name} "
-                "cannot be determined due to limited data availability."
-            ),
-            "method": "insufficient_data",
-            "n_points": n_sparse,
-            "segment_details": None,
-            "best_lag": None,
-            "all_lags": None,
-            "max_lag_tested": None,
-        }
+    # Insufficient data: too few points
+    if n_sparse < THRESHOLD_LOW:
+        return _insufficient_data_result(reference_name, comparison_name, n_sparse)
 
-    # Check if correlation analysis is possible
-    can_do_correlation = (
-        n_sparse >= correlation_threshold and
-        reference_years is not None and
-        reference_values is not None and
-        dense_years is not None and
-        dense_values is not None
-    )
-
-    if can_do_correlation:
+    # Try correlation analysis first if we have enough points
+    if n_sparse >= correlation_threshold:
         # Higher lags reduce usable data points; limit max lag to ensure
         # we still have enough change pairs for meaningful correlation
         n_changes = n_sparse - 1
@@ -524,7 +521,15 @@ def get_relationship_narrative(
                 "max_lag_tested": max_lag,
             }
 
-    # Fall back to comovement analysis
+    # Fall back to comovement analysis - compute segments if not provided
+    if reference_segments is None:
+        from .extractor import InsightExtractor
+        extractor = InsightExtractor(reference_years, reference_values)
+        reference_segments = extractor.get_structural_segments()
+
+    if not reference_segments:
+        return _insufficient_data_result(reference_name, comparison_name, n_sparse)
+
     segment_details = [
         analyze_segment_comovement(seg, comparison_years, comparison_values)
         for seg in reference_segments

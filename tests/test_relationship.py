@@ -318,11 +318,13 @@ class TestAnalyzeSegmentComovement:
 
 class TestRelationshipNarrativeInsufficientData:
     def test_too_few_comparison_points(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015])
         comp_values = np.array([50, 60])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
@@ -332,10 +334,14 @@ class TestRelationshipNarrativeInsufficientData:
         assert "limited data" in result["narrative"].lower()
 
     def test_empty_segments(self):
+        # Constant values produce no segments
+        ref_years = np.array([2012, 2015, 2018, 2020])
+        ref_values = np.array([100, 100, 100, 100])
         comp_years = np.array([2012, 2015, 2018, 2020])
         comp_values = np.array([50, 60, 70, 80])
         result = get_relationship_narrative(
-            reference_segments=[],
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
@@ -349,12 +355,15 @@ class TestRelationshipNarrativeInsufficientData:
 # ---------------------------------------------------------------------------
 
 class TestRelationshipNarrativeComovement:
+    # Use 3-4 points to stay below correlation threshold (5) and trigger comovement
     def test_single_segment_both_increasing(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015, 2018])
         comp_values = np.array([50, 65, 80])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="health spending",
@@ -366,11 +375,13 @@ class TestRelationshipNarrativeComovement:
         assert "same direction" in result["narrative"]
 
     def test_single_segment_opposite_directions(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015, 2018])
         comp_values = np.array([80, 65, 50])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
@@ -380,28 +391,34 @@ class TestRelationshipNarrativeComovement:
         assert "opposite" in result["narrative"]
 
     def test_multiple_segments(self):
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 110])
+        comp_years = np.array([2011, 2014, 2016, 2019])
+        comp_values = np.array([50, 60, 65, 70])
         segments = [
             _seg(2010, 2015, slope=5),
             _seg(2015, 2020, slope=-3),
         ]
-        comp_years = np.array([2011, 2014, 2016, 2019])
-        comp_values = np.array([50, 60, 65, 70])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
+            reference_segments=segments,
         )
         assert result["method"] == "comovement"
         assert len(result["segment_details"]) == 2
 
     def test_caveat_about_limited_data(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015, 2018])
         comp_values = np.array([50, 65, 80])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
@@ -410,18 +427,22 @@ class TestRelationshipNarrativeComovement:
         assert "statistical relationship cannot be established" in result["narrative"]
 
     def test_segment_with_no_comparison_data(self):
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 110])
+        comp_years = np.array([2011, 2013, 2014])
+        comp_values = np.array([50, 55, 60])
         segments = [
             _seg(2010, 2015, slope=5),
             _seg(2015, 2020, slope=-3),
         ]
-        comp_years = np.array([2011, 2013, 2014])
-        comp_values = np.array([50, 55, 60])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
+            reference_segments=segments,
         )
         assert result["method"] == "comovement"
         assert "unavailable" in result["narrative"]
@@ -433,19 +454,17 @@ class TestRelationshipNarrativeComovement:
 
 class TestRelationshipNarrativeLaggedCorrelation:
     def test_positive_correlation(self):
-        segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
         ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
         comp_values = np.array([50, 55, 58, 65, 68, 75, 78, 85, 90, 98], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=years,
+            reference_values=ref_values,
             comparison_years=years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=years,
-            reference_values=ref_values,
             correlation_threshold=8,
         )
         assert result["method"] == "lagged_correlation"
@@ -460,20 +479,18 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
 
     def test_negative_correlation(self):
-        segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
         # Data designed so percentage changes are negatively correlated
         ref_values = np.array([100, 110, 115, 130, 140, 145, 160, 175, 180, 200], dtype=float)
         comp_values = np.array([100, 95, 93, 85, 80, 78, 70, 62, 60, 50], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=years,
+            reference_values=ref_values,
             comparison_years=years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=years,
-            reference_values=ref_values,
             correlation_threshold=8,
         )
         assert result["method"] == "lagged_correlation"
@@ -488,19 +505,17 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
 
     def test_insignificant_correlation(self):
-        segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
         ref_values = np.array([100, 105, 102, 108, 104, 110, 106, 112, 108, 114], dtype=float)
         comp_values = np.array([50, 48, 52, 49, 51, 47, 53, 50, 48, 52], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=years,
+            reference_values=ref_values,
             comparison_years=years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=years,
-            reference_values=ref_values,
             correlation_threshold=8,
         )
         assert result["method"] == "lagged_correlation"
@@ -515,46 +530,41 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
 
     def test_falls_back_to_comovement_below_threshold(self):
-        segments = [_seg(2010, 2020, slope=5)]
         years = np.array([2010, 2012, 2015, 2018])
         ref_values = np.array([100, 110, 125, 140], dtype=float)
         comp_values = np.array([50, 55, 62, 70], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=years,
+            reference_values=ref_values,
             comparison_years=years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=years,
-            reference_values=ref_values,
             correlation_threshold=8,
         )
         assert result["method"] == "comovement"
 
     def test_symmetric_reference_sparser_than_comparison(self):
         """When reference has fewer points than comparison, use reference to define periods."""
-        segments = [_seg(2010, 2020, slope=5)]
         ref_years = np.array([2010, 2011, 2013, 2014, 2016, 2017, 2019, 2020])
         ref_values = np.array([100, 108, 120, 128, 145, 152, 168, 175], dtype=float)
         comp_years = np.arange(2010, 2021)
         comp_values = np.array([50, 53, 56, 60, 64, 68, 72, 76, 81, 86, 92], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=ref_years,
-            reference_values=ref_values,
             correlation_threshold=8,
         )
         assert result["method"] == "lagged_correlation"
 
     def test_lagged_effect_detection(self):
         """Test that lagged effects can be detected."""
-        segments = [_seg(2010, 2025, slope=5)]
         ref_years = np.arange(2010, 2025)
         comp_years = np.arange(2010, 2025)
         # Reference increases in specific years
@@ -563,13 +573,12 @@ class TestRelationshipNarrativeLaggedCorrelation:
         comp_values = np.array([50, 50, 50, 50, 55, 55, 60, 60, 65, 65, 70, 70, 75, 75, 80], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=ref_years,
-            reference_values=ref_values,
             correlation_threshold=8,
             max_lag_cap=5,
         )
@@ -594,11 +603,13 @@ class TestRelationshipNarrativeLaggedCorrelation:
 
 class TestRelationshipNarrativeNanHandling:
     def test_removes_nan_from_comparison(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015, 2018, 2019])
         comp_values = np.array([50, np.nan, 80, 90])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
@@ -613,11 +624,13 @@ class TestRelationshipNarrativeNanHandling:
 
 class TestRelationshipNarrativeReturnStructure:
     def test_comovement_return_keys(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015, 2018])
         comp_values = np.array([50, 65, 80])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
@@ -635,19 +648,17 @@ class TestRelationshipNarrativeReturnStructure:
         assert result["all_lags"] is None
 
     def test_lagged_correlation_return_keys(self):
-        segments = [_seg(2010, 2020, slope=5)]
         years = np.arange(2010, 2020)
         ref_values = np.array([100, 108, 112, 125, 128, 140, 145, 155, 162, 175], dtype=float)
         comp_values = np.array([50, 55, 58, 65, 68, 75, 78, 85, 90, 98], dtype=float)
 
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=years,
+            reference_values=ref_values,
             comparison_years=years,
             comparison_values=comp_values,
             reference_name="spending",
             comparison_name="outcome",
-            reference_years=years,
-            reference_values=ref_values,
             correlation_threshold=8,
         )
         assert "narrative" in result
@@ -664,11 +675,13 @@ class TestRelationshipNarrativeReturnStructure:
         assert "n_pairs" in result["best_lag"]
 
     def test_insufficient_data_return_keys(self):
-        segments = [_seg(2010, 2020, slope=5)]
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150])
         comp_years = np.array([2012, 2015])
         comp_values = np.array([50, 60])
         result = get_relationship_narrative(
-            reference_segments=segments,
+            reference_years=ref_years,
+            reference_values=ref_values,
             comparison_years=comp_years,
             comparison_values=comp_values,
             reference_name="spending",
