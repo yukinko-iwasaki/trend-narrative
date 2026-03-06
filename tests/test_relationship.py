@@ -673,6 +673,27 @@ class TestRelationshipNarrativeLaggedCorrelation:
         )
         assert result["method"] == "comovement"
 
+    def test_falls_back_to_comovement_when_no_valid_correlations(self):
+        """When enough points but no valid correlations computed, fall back to comovement."""
+        # Reference and comparison don't overlap in time, so interpolation fails
+        ref_years = np.array([2010, 2011, 2012, 2013, 2014, 2015])
+        ref_values = np.array([100, 110, 120, 130, 140, 150], dtype=float)
+        comp_years = np.array([2020, 2021, 2022, 2023, 2024, 2025])
+        comp_values = np.array([50, 60, 70, 80, 90, 100], dtype=float)
+        result = get_relationship_narrative(
+            reference_years=ref_years,
+            reference_values=ref_values,
+            comparison_years=comp_years,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            correlation_threshold=5,
+        )
+        # Has 6 points >= threshold 5, but no overlap so falls back to comovement
+        assert result["method"] == "comovement"
+        assert result["best_lag"] is None
+        assert result["all_lags"] is None
+
     def test_symmetric_reference_sparser_than_comparison(self):
         """When reference has fewer points than comparison, use reference to define periods."""
         ref_years = np.array([2010, 2011, 2013, 2014, 2016, 2017, 2019, 2020])
