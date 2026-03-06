@@ -234,6 +234,11 @@ def compute_lagged_correlation(
     sparse_changes = compute_yoy_changes(years_sorted, sparse_sorted)
     dense_changes = compute_yoy_changes(years_sorted, dense_sorted)
 
+    # Filter to finite pairs only (handles NaN/inf from near-zero bases or zero year gaps)
+    finite_mask = np.isfinite(sparse_changes) & np.isfinite(dense_changes)
+    sparse_changes = sparse_changes[finite_mask]
+    dense_changes = dense_changes[finite_mask]
+
     n_pairs = len(sparse_changes)
     if n_pairs < 2:
         return None

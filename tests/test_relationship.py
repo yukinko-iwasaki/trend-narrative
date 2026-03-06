@@ -194,6 +194,34 @@ class TestComputeLaggedCorrelation:
         )
         assert result is None
 
+    def test_near_zero_base_values_filtered(self):
+        """Near-zero base values produce NaN changes; these should be filtered."""
+        sparse_years = np.array([2010, 2011, 2012, 2013, 2014, 2015])
+        sparse_values = np.array([0.0, 50, 60, 70, 80, 90], dtype=float)  # First value is 0
+        dense_years = np.array([2010, 2011, 2012, 2013, 2014, 2015])
+        dense_values = np.array([100, 110, 120, 130, 140, 150], dtype=float)
+        result = compute_lagged_correlation(
+            sparse_years, sparse_values,
+            dense_years, dense_values,
+            lag=0
+        )
+        # Should still work after filtering NaN from first change
+        assert result is not None
+        assert result["n_pairs"] == 4  # 5 changes minus 1 NaN = 4
+
+    def test_all_near_zero_returns_none(self):
+        """If all changes are NaN/inf, should return None."""
+        sparse_years = np.array([2010, 2011, 2012])
+        sparse_values = np.array([0.0, 0.0, 0.0], dtype=float)  # All zeros
+        dense_years = np.array([2010, 2011, 2012])
+        dense_values = np.array([100, 110, 120], dtype=float)
+        result = compute_lagged_correlation(
+            sparse_years, sparse_values,
+            dense_years, dense_values,
+            lag=0
+        )
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # compute_all_lagged_correlations
