@@ -45,8 +45,12 @@ class InsightExtractor:
         y: "array-like",
         detector: TrendDetector | None = None,
     ) -> None:
-        self.x = np.asarray(x, dtype=float)
-        self.y = np.asarray(y, dtype=float)
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        # Sort by x to ensure correct segment computation
+        sort_idx = np.argsort(x)
+        self.x = x[sort_idx]
+        self.y = y[sort_idx]
         self.trend_detector = detector if detector is not None else TrendDetector()
 
     # ------------------------------------------------------------------

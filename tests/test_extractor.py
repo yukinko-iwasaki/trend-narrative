@@ -119,3 +119,17 @@ class TestExtractFullSuite:
         y = [float(i ** 2) for i in range(12)]
         result = InsightExtractor(x, y).extract_full_suite()
         assert "cv_value" in result
+
+    def test_unsorted_input_sorted_internally(self):
+        """Unsorted input should produce same result as sorted input."""
+        x_sorted = np.arange(2010, 2022, dtype=float)
+        y_sorted = 100.0 + 10.0 * (x_sorted - 2010)
+
+        x_unsorted = x_sorted[::-1]
+        y_unsorted = y_sorted[::-1]
+
+        sorted_result = InsightExtractor(x_sorted, y_sorted).extract_full_suite()
+        unsorted_result = InsightExtractor(x_unsorted, y_unsorted).extract_full_suite()
+
+        assert sorted_result["cv_value"] == pytest.approx(unsorted_result["cv_value"])
+        assert len(sorted_result["segments"]) == len(unsorted_result["segments"])

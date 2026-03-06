@@ -327,6 +327,13 @@ def _build_comovement_narrative(
     if not segment_details:
         return f"Unable to analyze relationship between {reference_name} and {comparison_name}."
 
+    total_comparison_points = sum(seg["comparison_n_points"] for seg in segment_details)
+    if total_comparison_points == 0:
+        return (
+            f"The relationship between {reference_name} and {comparison_name} "
+            f"cannot be determined because {comparison_name} data is not available."
+        )
+
     narratives = []
 
     for i, seg in enumerate(segment_details):
@@ -338,6 +345,10 @@ def _build_comovement_narrative(
         ref_start = _format_value(seg["reference_start"], reference_format)
         ref_end = _format_value(seg["reference_end"], reference_format)
 
+        # Override direction if formatted values are the same
+        if ref_start == ref_end:
+            ref_dir = "remained stable"
+
         if comp_dir is None:
             if comp_n == 0:
                 seg_narrative = (
@@ -345,17 +356,27 @@ def _build_comovement_narrative(
                     f"({ref_start} to {ref_end}), "
                     f"but {comparison_name} data is unavailable for this period"
                 )
-            else:
-                # n == 1
+            elif comp_n == 1:
                 comp_start = _format_value(seg["comparison_start"], comparison_format)
                 seg_narrative = (
                     f"{period}, {reference_name} {ref_dir} "
                     f"({ref_start} to {ref_end}), "
                     f"with only one {comparison_name} observation ({comp_start})"
                 )
+            else:
+                # Multiple observations but all same value - remained stable
+                comp_start = _format_value(seg["comparison_start"], comparison_format)
+                seg_narrative = (
+                    f"{period}, {reference_name} {ref_dir} ({ref_start} to {ref_end}) "
+                    f"while {comparison_name} remained stable ({comp_start})"
+                )
         else:
             comp_start = _format_value(seg["comparison_start"], comparison_format)
             comp_end = _format_value(seg["comparison_end"], comparison_format)
+
+            # Override direction if formatted values are the same
+            if comp_start == comp_end:
+                comp_dir = "remained stable"
 
             # Describe co-movement
             if ref_dir == comp_dir:
@@ -542,6 +563,15 @@ def get_relationship_narrative(
     valid_mask = ~np.isnan(comparison_values)
     comparison_years = comparison_years[valid_mask]
     comparison_values = comparison_values[valid_mask]
+
+    # Sort by year
+    ref_sort = np.argsort(reference_years)
+    reference_years = reference_years[ref_sort]
+    reference_values = reference_values[ref_sort]
+
+    comp_sort = np.argsort(comparison_years)
+    comparison_years = comparison_years[comp_sort]
+    comparison_values = comparison_values[comp_sort]
 
     n_reference = len(reference_values)
     n_comparison = len(comparison_values)

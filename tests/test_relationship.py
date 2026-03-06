@@ -390,16 +390,23 @@ class TestRelationshipNarrativeInsufficientData:
 
 class TestRelationshipNarrativeComovement:
     # Use 3-4 points to stay below correlation threshold (5) and trigger comovement
+    # Shared test data
+    years_3pt = np.array([2010, 2015, 2020])
+    ref_increasing = np.array([100, 125, 150], dtype=float)
+    ref_up_down = np.array([100, 125, 110], dtype=float)
+    comp_years_3pt = np.array([2012, 2015, 2018])
+    comp_increasing = np.array([50, 65, 80], dtype=float)
+    comp_decreasing = np.array([80, 65, 50], dtype=float)
+    comp_years_4pt = np.array([2011, 2014, 2016, 2019])
+    comp_4pt_increasing = np.array([50, 60, 65, 70], dtype=float)
+    two_segments = [_seg(2010, 2015, slope=5), _seg(2015, 2020, slope=-3)]
+
     def test_single_segment_both_increasing(self):
-        ref_years = np.array([2010, 2015, 2020])
-        ref_values = np.array([100, 125, 150])
-        comp_years = np.array([2012, 2015, 2018])
-        comp_values = np.array([50, 65, 80])
         result = get_relationship_narrative(
-            reference_years=ref_years,
-            reference_values=ref_values,
-            comparison_years=comp_years,
-            comparison_values=comp_values,
+            reference_years=self.years_3pt,
+            reference_values=self.ref_increasing,
+            comparison_years=self.comp_years_3pt,
+            comparison_values=self.comp_increasing,
             reference_name="health spending",
             comparison_name="UHC index",
         )
@@ -411,15 +418,11 @@ class TestRelationshipNarrativeComovement:
         )
 
     def test_single_segment_opposite_directions(self):
-        ref_years = np.array([2010, 2015, 2020])
-        ref_values = np.array([100, 125, 150])
-        comp_years = np.array([2012, 2015, 2018])
-        comp_values = np.array([80, 65, 50])
         result = get_relationship_narrative(
-            reference_years=ref_years,
-            reference_values=ref_values,
-            comparison_years=comp_years,
-            comparison_values=comp_values,
+            reference_years=self.years_3pt,
+            reference_values=self.ref_increasing,
+            comparison_years=self.comp_years_3pt,
+            comparison_values=self.comp_decreasing,
             reference_name="spending",
             comparison_name="outcome",
         )
@@ -431,26 +434,17 @@ class TestRelationshipNarrativeComovement:
         )
 
     def test_multiple_segments(self):
-        ref_years = np.array([2010, 2015, 2020])
-        ref_values = np.array([100, 125, 110])
-        comp_years = np.array([2011, 2014, 2016, 2019])
-        comp_values = np.array([50, 60, 65, 70])
-        segments = [
-            _seg(2010, 2015, slope=5),
-            _seg(2015, 2020, slope=-3),
-        ]
         result = get_relationship_narrative(
-            reference_years=ref_years,
-            reference_values=ref_values,
-            comparison_years=comp_years,
-            comparison_values=comp_values,
+            reference_years=self.years_3pt,
+            reference_values=self.ref_up_down,
+            comparison_years=self.comp_years_4pt,
+            comparison_values=self.comp_4pt_increasing,
             reference_name="spending",
             comparison_name="outcome",
-            reference_segments=segments,
+            reference_segments=self.two_segments,
         )
         assert result["method"] == "comovement"
         assert len(result["segment_details"]) == 2
-        # Values are interpolated at segment boundaries (2015 → 62.50)
         assert result["narrative"] == (
             "From 2010 to 2015, spending increased (100.00 to 125.00) "
             "while outcome increased (50.00 to 62.50), both moving in the same direction. "
@@ -460,14 +454,33 @@ class TestRelationshipNarrativeComovement:
         )
 
     def test_segment_with_no_comparison_data(self):
-        ref_years = np.array([2010, 2015, 2020])
-        ref_values = np.array([100, 125, 110])
         comp_years = np.array([2011, 2013, 2014])
-        comp_values = np.array([50, 55, 60])
-        segments = [
-            _seg(2010, 2015, slope=5),
-            _seg(2015, 2020, slope=-3),
-        ]
+        comp_values = np.array([50, 55, 60], dtype=float)
+        result = get_relationship_narrative(
+            reference_years=self.years_3pt,
+            reference_values=self.ref_up_down,
+            comparison_years=comp_years,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            reference_segments=self.two_segments,
+        )
+        assert result["method"] == "comovement"
+        assert result["narrative"] == (
+            "From 2010 to 2015, spending increased (100.00 to 125.00) "
+            "while outcome increased (50.00 to 60.00), both moving in the same direction. "
+            "From 2015 to 2020, spending decreased (100.00 to 85.00), "
+            "but outcome data is unavailable for this period. "
+            "With only 3 outcome observations, a statistical relationship cannot be established."
+        )
+
+    def test_no_comparison_data_in_segments(self):
+        """When comparison has zero observations in all segments, simplify narrative."""
+        ref_years = np.array([2019, 2020, 2021, 2022])
+        ref_values = np.array([100, 110, 105, 115], dtype=float)
+        comp_years = np.array([2010, 2012, 2015, 2017])
+        comp_values = np.array([50, 55, 60, 65], dtype=float)
+        segments = [_seg(2019, 2021, slope=2.5), _seg(2021, 2022, slope=10)]
         result = get_relationship_narrative(
             reference_years=ref_years,
             reference_values=ref_values,
@@ -479,12 +492,69 @@ class TestRelationshipNarrativeComovement:
         )
         assert result["method"] == "comovement"
         assert result["narrative"] == (
-            "From 2010 to 2015, spending increased (100.00 to 125.00) "
-            "while outcome increased (50.00 to 60.00), both moving in the same direction. "
-            "From 2015 to 2020, spending decreased (100.00 to 85.00), "
-            "but outcome data is unavailable for this period. "
-            "With only 3 outcome observations, a statistical relationship cannot be established."
+            "The relationship between spending and outcome "
+            "cannot be determined because outcome data is not available."
         )
+
+    def test_remained_stable_when_formatted_values_same(self):
+        """When formatted start/end values are equal, direction should be 'remained stable'."""
+        ref_years = np.array([2018, 2020, 2022, 2024])
+        # Small slope but values round to same number with default .2f format
+        ref_values = np.array([100.001, 100.002, 100.003, 100.004], dtype=float)
+        comp_years = np.array([2019, 2021, 2023])
+        comp_values = np.array([50, 55, 60], dtype=float)
+        result = get_relationship_narrative(
+            reference_years=ref_years,
+            reference_values=ref_values,
+            comparison_years=comp_years,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+        )
+        assert result["method"] == "comovement"
+        assert "remained stable (100.00 to 100.00)" in result["narrative"]
+        assert "increased (100.00 to 100.00)" not in result["narrative"]
+
+    def test_handles_unsorted_input(self):
+        """Input data should be sorted internally, producing same result as sorted input."""
+        # Sorted input
+        sorted_result = get_relationship_narrative(
+            reference_years=self.years_3pt,
+            reference_values=self.ref_increasing,
+            comparison_years=self.comp_years_3pt,
+            comparison_values=self.comp_increasing,
+            reference_name="spending",
+            comparison_name="outcome",
+        )
+        # Unsorted input (reverse order)
+        unsorted_result = get_relationship_narrative(
+            reference_years=self.years_3pt[::-1],
+            reference_values=self.ref_increasing[::-1],
+            comparison_years=self.comp_years_3pt[::-1],
+            comparison_values=self.comp_increasing[::-1],
+            reference_name="spending",
+            comparison_name="outcome",
+        )
+        assert sorted_result["narrative"] == unsorted_result["narrative"]
+        assert sorted_result["method"] == unsorted_result["method"]
+
+    def test_comparison_all_same_value(self):
+        """When all comparison values are identical, should say 'remained stable' not 'only one observation'."""
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100, 125, 150], dtype=float)
+        comp_years = np.array([2011, 2012, 2013, 2014, 2015, 2016, 2017])
+        comp_values = np.array([0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9], dtype=float)
+        result = get_relationship_narrative(
+            reference_years=ref_years,
+            reference_values=ref_values,
+            comparison_years=comp_years,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+        )
+        assert result["method"] == "comovement"
+        assert "remained stable" in result["narrative"]
+        assert "only one" not in result["narrative"]
 
 
 # ---------------------------------------------------------------------------
