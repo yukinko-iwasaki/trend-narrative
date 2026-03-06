@@ -414,7 +414,7 @@ class TestRelationshipNarrativeComovement:
         assert result["narrative"] == (
             "From 2010 to 2020, health spending increased (100.00 to 150.00) "
             "while UHC index increased (50.00 to 80.00), both moving in the same direction. "
-            "With only 3 UHC index observations, a statistical relationship cannot be established."
+            "With limited UHC index data, a statistical relationship cannot be established."
         )
 
     def test_single_segment_opposite_directions(self):
@@ -430,7 +430,7 @@ class TestRelationshipNarrativeComovement:
         assert result["narrative"] == (
             "From 2010 to 2020, spending increased (100.00 to 150.00) "
             "while outcome decreased (80.00 to 50.00), moving in opposite directions. "
-            "With only 3 outcome observations, a statistical relationship cannot be established."
+            "With limited outcome data, a statistical relationship cannot be established."
         )
 
     def test_multiple_segments(self):
@@ -450,10 +450,11 @@ class TestRelationshipNarrativeComovement:
             "while outcome increased (50.00 to 62.50), both moving in the same direction. "
             "From 2015 to 2020, spending decreased (100.00 to 85.00) "
             "while outcome increased (62.50 to 70.00), moving in opposite directions. "
-            "With only 4 outcome observations, a statistical relationship cannot be established."
+            "With limited outcome data, a statistical relationship cannot be established."
         )
 
     def test_segment_with_no_comparison_data(self):
+        """Segments without comparison data are omitted, with a caveat added."""
         comp_years = np.array([2011, 2013, 2014])
         comp_values = np.array([50, 55, 60], dtype=float)
         result = get_relationship_narrative(
@@ -469,9 +470,7 @@ class TestRelationshipNarrativeComovement:
         assert result["narrative"] == (
             "From 2010 to 2015, spending increased (100.00 to 125.00) "
             "while outcome increased (50.00 to 60.00), both moving in the same direction. "
-            "From 2015 to 2020, spending decreased (100.00 to 85.00), "
-            "but outcome data is unavailable for this period. "
-            "With only 3 outcome observations, a statistical relationship cannot be established."
+            "With limited outcome data, a statistical relationship cannot be established."
         )
 
     def test_no_comparison_data_in_segments(self):

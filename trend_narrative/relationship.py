@@ -334,13 +334,19 @@ def _build_comovement_narrative(
             f"cannot be determined because {comparison_name} data is not available."
         )
 
+    # Only build narratives for segments with comparison data
     narratives = []
+    segments_with_data = 0
 
-    for i, seg in enumerate(segment_details):
+    for seg in segment_details:
+        comp_n = seg["comparison_n_points"]
+        if comp_n == 0:
+            continue
+
+        segments_with_data += 1
         period = f"from {seg['start_year']} to {seg['end_year']}"
         ref_dir = seg["reference_direction"]
         comp_dir = seg["comparison_direction"]
-        comp_n = seg["comparison_n_points"]
 
         ref_start = _format_value(seg["reference_start"], reference_format)
         ref_end = _format_value(seg["reference_end"], reference_format)
@@ -350,13 +356,7 @@ def _build_comovement_narrative(
             ref_dir = "remained stable"
 
         if comp_dir is None:
-            if comp_n == 0:
-                seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} "
-                    f"({ref_start} to {ref_end}), "
-                    f"but {comparison_name} data is unavailable for this period"
-                )
-            elif comp_n == 1:
+            if comp_n == 1:
                 comp_start = _format_value(seg["comparison_start"], comparison_format)
                 seg_narrative = (
                     f"{period}, {reference_name} {ref_dir} "
@@ -399,9 +399,8 @@ def _build_comovement_narrative(
                     f"({comp_start} to {comp_end})"
                 )
 
-        # Capitalize first letter (each segment becomes a sentence)
+        # Capitalize first letter
         seg_narrative = seg_narrative[0].upper() + seg_narrative[1:]
-
         narratives.append(seg_narrative)
 
     # Join segments
@@ -411,9 +410,8 @@ def _build_comovement_narrative(
         narrative = ". ".join(narratives) + "."
 
     # Add caveat about limited data
-    total_comparison_points = sum(seg["comparison_n_points"] for seg in segment_details)
     narrative += (
-        f" With only {total_comparison_points} {comparison_name} observations, "
+        f" With limited {comparison_name} data, "
         "a statistical relationship cannot be established."
     )
 
