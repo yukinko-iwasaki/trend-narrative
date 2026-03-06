@@ -441,9 +441,13 @@ def _build_lagged_correlation_narrative(
                 f"given the limited sample size (n={n_pairs} change pairs, p={p_value:.2f})."
             )
         else:
+            lag_info = (
+                "" if max_lag_tested == 0
+                else f" at any lag tested (0-{max_lag_tested} {_pluralize(time_unit, max_lag_tested)})"
+            )
             narrative += (
-                f"Changes in one do not appear to be associated with changes in the other "
-                f"at any lag tested (0-{max_lag_tested} {time_unit}s)."
+                f"Changes in one do not appear to be associated with changes in the other{lag_info}, "
+                f"based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
             )
     else:
         # Significant: lead with the finding

@@ -632,6 +632,31 @@ class TestRelationshipNarrativeLaggedCorrelation:
             "based on 12 year-over-year comparisons."
         )
 
+    def test_max_lag_zero_no_relationship(self):
+        """When max_lag is 0 and no relationship found, narrative should not say '0-0 years'."""
+        # With exactly 5 points and correlation_threshold=5:
+        # n_changes = 4, min_pairs_needed = 4, max_testable_lag = 0
+        periods_5 = np.array([2010, 2011, 2012, 2013, 2014])
+        # Orthogonal changes: ref [+,-,+,-] vs comp [+,+,-,-]
+        ref_values = np.array([100, 110, 100, 110, 100], dtype=float)
+        comp_values = np.array([50, 60, 70, 60, 50], dtype=float)
+        result = get_relationship_narrative(
+            reference_years=periods_5,
+            reference_values=ref_values,
+            comparison_years=periods_5,
+            comparison_values=comp_values,
+            reference_name="spending",
+            comparison_name="outcome",
+            correlation_threshold=5,
+        )
+        assert result["method"] == "lagged_correlation"
+        assert result["max_lag_tested"] == 0
+        assert result["narrative"] == (
+            "No reliable relationship was detected between changes in spending and outcome. "
+            "Changes in one do not appear to be associated with changes in the other, "
+            "based on 4 year-over-year comparisons."
+        )
+
     # Time unit customization tests
 
     def test_time_unit_month(self):
