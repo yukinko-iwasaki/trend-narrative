@@ -42,7 +42,9 @@ def get_direction(values: np.ndarray) -> str:
 
     start, end = values[0], values[-1]
     if start == 0:
-        return "increased" if end > 0 else "stable"
+        if end == 0:
+            return "remained stable"
+        return "increased" if end > 0 else "decreased"
 
     pct_change = (end - start) / abs(start)
 

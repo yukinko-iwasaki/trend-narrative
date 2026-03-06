@@ -41,12 +41,15 @@ def _seg(start_year, end_year, slope, start_value=100.0, end_value=None):
 class TestGetDirection:
     def test_increasing(self):
         assert get_direction(np.array([100, 150])) == "increased"
+        assert get_direction(np.array([0, 150])) == "increased"
 
     def test_decreasing(self):
         assert get_direction(np.array([150, 100])) == "decreased"
+        assert get_direction(np.array([0, -150])) == "decreased"
 
     def test_stable_small_change(self):
         assert get_direction(np.array([100, 104])) == "remained stable"
+        assert get_direction(np.array([0, 0])) == "remained stable"
 
     def test_single_value(self):
         assert get_direction(np.array([100])) == "unknown"
