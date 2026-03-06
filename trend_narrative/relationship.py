@@ -41,26 +41,17 @@ def get_direction(values: np.ndarray) -> str:
         return "unknown"
 
     start, end = values[0], values[-1]
-    if start == 0:
-        if end == 0:
-            return "remained stable"
-        return "increased" if end > 0 else "decreased"
 
-    pct_change = (end - start) / abs(start)
+    # Use the non-zero value as denominator; if both zero, stable
+    if start == 0 and end == 0:
+        return "remained stable"
+    denominator = abs(start) if start != 0 else abs(end)
+    pct_change = (end - start) / denominator
 
     # Less than 5% change is considered stable to avoid overstating minor fluctuations
     if abs(pct_change) < 0.05:
         return "remained stable"
     return "increased" if pct_change > 0 else "decreased"
-
-
-def get_direction_from_slope(slope: float) -> str:
-    """Convert slope to direction string."""
-    if slope > 0:
-        return "increased"
-    elif slope < 0:
-        return "decreased"
-    return "remained stable"
 
 
 def get_correlation_strength(corr: float) -> str:
@@ -194,7 +185,7 @@ def analyze_segment_comovement(
     return {
         "start_year": int(start_year),
         "end_year": int(end_year),
-        "reference_direction": get_direction_from_slope(segment["slope"]),
+        "reference_direction": get_direction(np.array([segment["start_value"], segment["end_value"]])),
         "reference_start": segment["start_value"],
         "reference_end": segment["end_value"],
         "comparison_n_points": n_points,
@@ -527,7 +518,7 @@ def get_relationship_narrative(
         Display name for the comparison series.
     reference_segments : list[dict], optional
         Pre-computed segments from InsightExtractor for the reference series.
-        Each dict should contain: start_year, end_year, slope.
+        Each dict should contain: start_year, end_year, start_value, end_value.
         If not provided, computed from reference_years/reference_values.
     correlation_threshold : int
         Minimum points to use correlation analysis (default 5).
