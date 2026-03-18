@@ -4,6 +4,8 @@ remote_theme: just-the-docs/just-the-docs@v0.10.1
 plugins:
   - jekyll-remote-theme
 color_scheme: light
+heading_anchors: true
+nav_enabled: true
 aux_links:
   "GitHub":
     - "https://github.com/yukinko-iwasaki/trend-narrative"
