@@ -7,3 +7,12 @@ color_scheme: light
 aux_links:
   "GitHub":
     - "https://github.com/yukinko-iwasaki/trend-narrative"
+exclude:
+  - WB-IGO-RIDER.md
+  - CODE_OF_CONDUCT.md
+  - CONTRIBUTING.md
+  - CITATION.cff
+  - LICENSE
+  - pyproject.toml
+  - trend_narrative/
+  - tests/
