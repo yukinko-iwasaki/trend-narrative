@@ -1,22 +1,36 @@
 # trend-narrative
 
-A standalone Python package that combines **piecewise-linear trend detection**, **relationship analysis**, and **plain-English narrative generation** for time-series data.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://yukinko-iwasaki.github.io/trend-narrative/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 
-## What does this package do?
+## Overview
+
+The **trend-narrative** package is a standalone Python library that combines **piecewise-linear trend detection**, **relationship analysis**, and **plain-English narrative generation** for time-series data.
 
 Given a time series — such as annual health spending or GDP figures — this package automatically identifies meaningful trends (e.g., "rising from 2010 to 2015, then declining") and produces a ready-to-use English sentence describing them. It can also compare two time series and explain how they move together or apart over time.
 
 This is useful for analysts, researchers, and developers who need to turn numeric data into human-readable summaries without writing custom text logic each time.
 
----
+## Documentation
 
-## Installation
+Full documentation is available at **[https://yukinko-iwasaki.github.io/trend-narrative/](https://yukinko-iwasaki.github.io/trend-narrative/)**.
+
+## Getting Started
+
+### Prerequisites
+
+- Python >= 3.9
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+
+### Installation
 
 ```bash
 uv add trend-narrative
 ```
 
 **For development** (editable install with test dependencies):
+
 ```bash
 git clone https://github.com/yukinko-iwasaki/trend-narrative.git
 cd trend-narrative
@@ -25,15 +39,7 @@ uv sync --extra dev
 
 Dependencies: `numpy`, `scipy`, `pwlf`
 
----
-
-## Two calling paths
-
-### Path 1 — from raw data
-
-Create an `InsightExtractor` with your chosen detector, then pass it to the
-narrative function. Keeping the two steps separate means you can swap in any
-custom detector without touching the narrative layer:
+### Quick Example
 
 ```python
 import numpy as np
@@ -49,6 +55,29 @@ print(narrative)
 #    Trend then shifted, reaching a peak in 2015 before reversing into a decline."
 ```
 
+---
+
+## Usage
+
+### Trend Narratives
+
+#### Path 1 — from raw data
+
+Create an `InsightExtractor` with your chosen detector, then pass it to the
+narrative function. Keeping the two steps separate means you can swap in any
+custom detector without touching the narrative layer:
+
+```python
+import numpy as np
+from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
+
+x = np.arange(2010, 2022, dtype=float)
+y = np.array([100, 105, 112, 108, 115, 130, 125, 120, 118, 122, 135, 148], dtype=float)
+
+extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
+narrative = get_segment_narrative(extractor=extractor, metric="health spending")
+```
+
 You can also call the extraction step separately if you need the raw numbers:
 
 ```python
@@ -56,7 +85,7 @@ suite = extractor.extract_full_suite()
 # {"cv_value": 14.2, "segments": [...], "n_points": 12}
 ```
 
-### Path 2 — from precomputed data
+#### Path 2 — from precomputed data
 
 If you already have segments and a CV value stored (e.g. from a database or
 a previous extraction run), pass them directly — no re-fitting required:
@@ -69,18 +98,13 @@ narrative = get_segment_narrative(
     cv_value=row["cv_value"],
     metric="health spending",
 )
-print(narrative)
 ```
 
----
-
-## Relationship narratives
+### Relationship Narratives
 
 Analyze the relationship between two time series (e.g., spending vs outcomes).
 
-### Path 1 — from raw data
-
-Compute the analysis on the fly from raw time series data:
+#### Path 1 — from raw data
 
 ```python
 import numpy as np
@@ -99,10 +123,7 @@ print(result["narrative"])
 print(result["method"])  # "lagged_correlation", "comovement", or "insufficient_data"
 ```
 
-### Path 2 — from precomputed insights
-
-If you already have relationship insights stored (e.g. from a database or
-a previous analysis run), pass them directly — no re-analysis required:
+#### Path 2 — from precomputed insights
 
 ```python
 from trend_narrative import get_relationship_narrative
@@ -115,7 +136,7 @@ narrative = get_relationship_narrative(
 print(narrative["narrative"])
 ```
 
-### Separate analysis and narrative generation
+#### Separate analysis and narrative generation
 
 Use `analyze_relationship()` when you want to inspect or store the analysis
 results separately from narrative generation:
@@ -148,20 +169,18 @@ The function automatically chooses the analysis method based on data availabilit
 
 ---
 
-## API reference
+## API Reference
 
 ### `get_segment_narrative(segments, cv_value, metric="expenditure")`
 ### `get_segment_narrative(extractor, metric="expenditure")`
 
 Generates a plain-English narrative for a single time series. Accepts either
-precomputed data (Path 1) or an `InsightExtractor` instance (Path 2).
+precomputed data or an `InsightExtractor` instance.
 
 - No segments + low CV → *"remained highly stable"*
 - No segments + high CV → *"exhibited significant volatility"*
 - Single segment → direction + % change sentence
 - Multi-segment → transition phrases (peak / trough / continuation)
-
----
 
 ### `analyze_relationship(...)`
 
@@ -189,16 +208,14 @@ Returns a dict with:
 - `max_lag_tested`: int, maximum lag tested (correlation only)
 - `reference_leads`: bool, whether reference series leads comparison
 
----
-
 ### `get_relationship_narrative(...)`
 
 Generates a narrative from relationship analysis. Accepts either precomputed
-insights (Path 1) or raw data arrays (Path 2).
+insights or raw data arrays.
 
 ```python
 get_relationship_narrative(
-    # Path 2: raw data (optional if insights provided)
+    # Raw data (optional if insights provided)
     reference_years=None,      # array-like, the "driver" series years
     reference_values=None,     # array-like, the "driver" series values
     comparison_years=None,     # array-like, the "outcome" series years
@@ -214,7 +231,7 @@ get_relationship_narrative(
     comparison_format=".2f",   # format spec or callable for comparison values
     time_unit="year",          # "year", "month", "quarter" for narratives
     reference_leads=None,      # True/False to override, None to infer
-    # Path 1: precomputed insights
+    # Precomputed insights
     insights=None,             # dict from analyze_relationship()
 )
 ```
@@ -227,8 +244,6 @@ Returns a dict with:
 - `best_lag`: dict with lag details (correlation path only)
 - `all_lags`: list of all tested lags (correlation path only)
 - `max_lag_tested`: int, maximum lag tested (correlation only)
-
----
 
 ### `TrendDetector(max_segments=3, threshold=0.05)`
 
@@ -244,8 +259,6 @@ breakpoints to integer years and local extrema.
 Each segment dict contains: `start_year`, `end_year`, `start_value`,
 `end_value`, `slope`, `p_value`.
 
----
-
 ### `InsightExtractor(x, y, detector=None)`
 
 Combines volatility measurement with trend detection. Pass a custom detector
@@ -257,14 +270,10 @@ to control the fitting logic.
 | `get_structural_segments()` | `list[dict]` | Delegates to the detector |
 | `extract_full_suite()` | `dict` | `{cv_value, segments, n_points}` |
 
----
-
 ### `consolidate_segments(segments)`
 
 Merges consecutive segments that share the same slope direction. Applied
 automatically inside `get_segment_narrative`.
-
----
 
 ### `millify(n)`
 
@@ -272,7 +281,7 @@ Formats large numbers with a human-readable suffix: `1_500_000 → "1.50 M"`.
 
 ---
 
-## Running tests
+## Running Tests
 
 ```bash
 uv run pytest
@@ -282,7 +291,7 @@ uv run pytest --cov=trend_narrative --cov-report=term-missing
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 trend-narrative/
@@ -303,13 +312,19 @@ trend-narrative/
 └── README.md
 ```
 
-## Documentation
+---
 
-Full documentation is available at [https://yukinko-iwasaki.github.io/trend-narrative/](https://yukinko-iwasaki.github.io/trend-narrative/).
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Contact
 
-For questions, feedback, or collaboration enquiries, please reach out to [ysuzuki2@worldbank.org](mailto:ysuzuki2@worldbank.org).
+For questions, feedback, or collaboration enquiries, please reach out to [ysuzuki2@worldbank.org](mailto:ysuzuki2@worldbank.org) and [wlu4@worldbank.org](mailto:wlu4@worldbank.org).
 
 ## License
 

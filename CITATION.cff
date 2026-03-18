@@ -13,6 +13,9 @@ authors:
     email: ysuzuki2@worldbank.org
     affiliation: World Bank
     orcid: 'https://orcid.org/0009-0006-3739-7090'
+  - given-names: Wei
+    family-names: Lu
+    email: wlu4@worldbank.org
 identifiers:
   - type: url
     value: 'https://pypi.org/project/trend-narrative/0.3.0/'
