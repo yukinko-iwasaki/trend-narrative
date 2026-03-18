@@ -1,0 +1,19 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: trend-narrative
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Yukiko
+    family-names: Suzuki
+    email: ysuzuki2@worldbank.org
+    affiliation: World Bank
+    orcid: 'https://orcid.org/0009-0006-3739-7090'
+identifiers:
+  - type: url
+    value: 'https://pypi.org/project/trend-narrative/0.3.0/'
+    description: The URL of version 0.3.0 of the software
