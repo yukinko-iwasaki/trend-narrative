@@ -2,6 +2,12 @@
 
 A standalone Python package that combines **piecewise-linear trend detection**, **relationship analysis**, and **plain-English narrative generation** for time-series data.
 
+## What does this package do?
+
+Given a time series — such as annual health spending or GDP figures — this package automatically identifies meaningful trends (e.g., "rising from 2010 to 2015, then declining") and produces a ready-to-use English sentence describing them. It can also compare two time series and explain how they move together or apart over time.
+
+This is useful for analysts, researchers, and developers who need to turn numeric data into human-readable summaries without writing custom text logic each time.
+
 ---
 
 ## Installation
@@ -296,6 +302,10 @@ trend-narrative/
 ├── pyproject.toml
 └── README.md
 ```
+
+## Documentation
+
+Full documentation is available at [https://yukinko-iwasaki.github.io/trend-narrative/](https://yukinko-iwasaki.github.io/trend-narrative/).
 
 ## Contact
 
