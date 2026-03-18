@@ -1,5 +1,9 @@
 title: trend-narrative
 description: Piecewise-linear trend detection and plain-English narrative generation for time-series data
-remote_theme: pages-themes/minimal@v0.2.0
+remote_theme: just-the-docs/just-the-docs@v0.10.1
 plugins:
   - jekyll-remote-theme
+color_scheme: light
+aux_links:
+  "GitHub":
+    - "https://github.com/yukinko-iwasaki/trend-narrative"
