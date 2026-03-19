@@ -1,7 +1,7 @@
 # trend-narrative
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://yukinko-iwasaki.github.io/trend-narrative/)
+[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://worldbank.github.io/trend-narrative/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 
 ## Overview
@@ -14,7 +14,7 @@ This is useful for analysts, researchers, and developers who need to turn numeri
 
 ## Documentation
 
-Full documentation is available at **[https://yukinko-iwasaki.github.io/trend-narrative/](https://yukinko-iwasaki.github.io/trend-narrative/)**.
+Full documentation is available at **[https://worldbank.github.io/trend-narrative/](https://worldbank.github.io/trend-narrative/)**.
 
 ## Getting Started
 
@@ -32,7 +32,7 @@ uv add trend-narrative
 **For development** (editable install with test dependencies):
 
 ```bash
-git clone https://github.com/yukinko-iwasaki/trend-narrative.git
+git clone https://github.com/worldbank/trend-narrative.git
 cd trend-narrative
 uv sync --extra dev
 ```
