@@ -127,7 +127,7 @@ def get_segment_narrative(
     n_points: Optional[int] = None,
     lang: str = "en",
 ) -> str:
-    """Generate a plain-English narrative from trend data.
+    """Generate a plain-language narrative from trend data.
 
     Supports two calling paths:
 
@@ -250,7 +250,13 @@ def _build_narrative(
     narrative: list[str] = []
     transition_prefixes = t["transition_prefixes"]
     for i, seg in enumerate(segments):
-        direction = t["an_upward"] if seg["slope"] > 0 else t["a_downward"]
+        is_upward = seg["slope"] > 0
+        # Trend phrase is a noun-phrase used in the first-segment template
+        # ("showed an upward trend"); path phrase is the bare adjective used
+        # in "continuing its {…} path". They are not interchangeable —
+        # reusing one in the other context produces ungrammatical output.
+        trend_phrase = t["trend_upward"] if is_upward else t["trend_downward"]
+        path_phrase = t["path_upward"] if is_upward else t["path_downward"]
 
         if i == 0:
             narrative.append(
@@ -258,7 +264,7 @@ def _build_narrative(
                     start_year=int(seg["start_year"]),
                     end_year=int(seg["end_year"]),
                     metric=metric,
-                    direction=direction,
+                    trend_phrase=trend_phrase,
                 )
             )
         else:
@@ -271,7 +277,7 @@ def _build_narrative(
                 transition = t["low_recovery"].format(year=int(seg["start_year"]))
             else:
                 transition = t["continuing"].format(
-                    direction=direction, year=int(seg["end_year"])
+                    path_phrase=path_phrase, year=int(seg["end_year"])
                 )
 
             narrative.append(f"{prefix} {transition}")

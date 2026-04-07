@@ -29,11 +29,15 @@ STRINGS: dict[str, object] = {
     ),
 
     # narrative.py — multi-segment
-    "an_upward": "an upward",
-    "a_downward": "a downward",
+    # Trend phrase: complete noun phrase used with the "first segment" template.
+    "trend_upward": "an upward trend",
+    "trend_downward": "a downward trend",
+    # Path phrase: bare adjective form used with "continuing its {…} path".
+    "path_upward": "upward",
+    "path_downward": "downward",
     "first_segment": (
         "From {start_year} to {end_year}, "
-        "the {metric} showed {direction} trend."
+        "the {metric} showed {trend_phrase}."
     ),
     "transition_prefixes": [
         "Trend then shifted,",
@@ -48,9 +52,10 @@ STRINGS: dict[str, object] = {
         "hitting a low in {year} "
         "followed by a recovery."
     ),
-    "continuing": "continuing its {direction} path through {year}.",
+    "continuing": "continuing its {path_phrase} path through {year}.",
 
     # relationship_narrative.py — comovement
+    "period_from_to": "from {start} to {end}",
     "unable_to_analyze": (
         "Unable to analyze relationship between {x} and {y}."
     ),
@@ -87,6 +92,7 @@ STRINGS: dict[str, object] = {
     # relationship_narrative.py — lagged correlation
     "timing_same": "in the same {time_unit}",
     "timing_lagged": "about {lag} {time_unit_pl} later",
+    "lag_info_tested": " at any lag tested (0-{max_lag} {time_unit_pl})",
     "no_reliable_relationship": (
         "No reliable relationship was detected between changes in {x} "
         "and {y}. "

@@ -50,38 +50,48 @@ class TestTranslationsModule:
 
 
 # ---------------------------------------------------------------------------
-# get_direction / get_correlation_strength with lang='fr'
+# Direction / correlation strength keys resolved via the French catalog.
+#
+# get_direction / get_correlation_strength are language-neutral — they return
+# stable keys. These tests verify the end-to-end catalog lookup a narrative
+# layer would perform.
 # ---------------------------------------------------------------------------
 
 class TestDirectionFrench:
+    def _fr(self, values):
+        return get_translations("fr")[get_direction(np.array(values))]
+
     def test_increased(self):
-        assert get_direction(np.array([100.0, 200.0]), lang="fr") == "a augmenté"
+        assert self._fr([100.0, 200.0]) == "a augmenté"
 
     def test_decreased(self):
-        assert get_direction(np.array([200.0, 100.0]), lang="fr") == "a diminué"
+        assert self._fr([200.0, 100.0]) == "a diminué"
 
     def test_stable(self):
-        assert get_direction(np.array([100.0, 100.0]), lang="fr") == "est resté stable"
+        assert self._fr([100.0, 100.0]) == "est resté stable"
 
     def test_unknown(self):
-        assert get_direction(np.array([100.0]), lang="fr") == "inconnu"
+        assert self._fr([100.0]) == "inconnu"
 
 
 class TestCorrelationStrengthFrench:
+    def _fr(self, corr):
+        return get_translations("fr")[get_correlation_strength(corr)]
+
     def test_no_correlation(self):
-        assert get_correlation_strength(0.05, lang="fr") == "aucune"
+        assert self._fr(0.05) == "aucune"
 
     def test_weak(self):
-        assert get_correlation_strength(0.2, lang="fr") == "faible"
+        assert self._fr(0.2) == "faible"
 
     def test_moderate(self):
-        assert get_correlation_strength(0.4, lang="fr") == "modérée"
+        assert self._fr(0.4) == "modérée"
 
     def test_strong(self):
-        assert get_correlation_strength(0.6, lang="fr") == "forte"
+        assert self._fr(0.6) == "forte"
 
     def test_very_strong(self):
-        assert get_correlation_strength(0.9, lang="fr") == "très forte"
+        assert self._fr(0.9) == "très forte"
 
 
 # ---------------------------------------------------------------------------

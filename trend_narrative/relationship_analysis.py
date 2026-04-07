@@ -18,8 +18,6 @@ from typing import Optional
 import numpy as np
 from scipy import stats
 
-from .translations import get_translations
-
 
 CORRELATION_THRESHOLDS = {
     0.1: "strength_no",
@@ -35,34 +33,42 @@ DEFAULT_MAX_LAG_CAP = 5  # Domain-appropriate limit for policy effects
 P_THRESHOLD = 0.10  # Threshold for statistical significance
 
 
-def get_direction(values: np.ndarray, lang: str = "en") -> str:
-    """Determine direction from start to end value."""
-    t = get_translations(lang)
+def get_direction(values: np.ndarray) -> str:
+    """Determine direction from start to end value.
+
+    Returns a language-neutral key: ``"increased"``, ``"decreased"``,
+    ``"remained_stable"``, or ``"unknown"``. Translation into display text
+    is the narrative layer's responsibility.
+    """
     if len(values) < 2:
-        return t["unknown"]
+        return "unknown"
 
     start, end = values[0], values[-1]
 
     # Use the non-zero value as denominator; if both zero, stable
     if start == 0 and end == 0:
-        return t["remained_stable"]
+        return "remained_stable"
     denominator = abs(start) if start != 0 else abs(end)
     pct_change = (end - start) / denominator
 
     # Less than 5% change is considered stable to avoid overstating minor fluctuations
     if abs(pct_change) < 0.05:
-        return t["remained_stable"]
-    return t["increased"] if pct_change > 0 else t["decreased"]
+        return "remained_stable"
+    return "increased" if pct_change > 0 else "decreased"
 
 
-def get_correlation_strength(corr: float, lang: str = "en") -> str:
-    """Map correlation coefficient to descriptive strength."""
-    t = get_translations(lang)
+def get_correlation_strength(corr: float) -> str:
+    """Map correlation coefficient to a descriptive strength key.
+
+    Returns a language-neutral key from :data:`CORRELATION_THRESHOLDS`
+    (e.g. ``"strength_weak"``). Translation into display text is the
+    narrative layer's responsibility.
+    """
     abs_corr = abs(corr)
     for threshold, key in sorted(CORRELATION_THRESHOLDS.items()):
         if abs_corr <= threshold:
-            return t[key]
-    return t["strength_very_strong"]
+            return key
+    return "strength_very_strong"
 
 
 def compute_yoy_changes(
@@ -154,7 +160,6 @@ def analyze_segment_comovement(
     segment: dict,
     comparison_years: np.ndarray,
     comparison_values: np.ndarray,
-    lang: str = "en",
 ) -> dict:
     """Analyze comparison series within a single reference segment.
 
@@ -188,11 +193,11 @@ def analyze_segment_comovement(
     return {
         "start_year": int(start_year),
         "end_year": int(end_year),
-        "reference_direction": get_direction(np.array([segment["start_value"], segment["end_value"]]), lang=lang),
+        "reference_direction": get_direction(np.array([segment["start_value"], segment["end_value"]])),
         "reference_start": segment["start_value"],
         "reference_end": segment["end_value"],
         "comparison_n_points": n_points,
-        "comparison_direction": get_direction(np.array([comp_start, comp_end]), lang=lang) if can_calc_direction else None,
+        "comparison_direction": get_direction(np.array([comp_start, comp_end])) if can_calc_direction else None,
         "comparison_start": comp_start,
         "comparison_end": comp_end,
         "interpolated": start_interp and end_interp,
@@ -301,14 +306,18 @@ def analyze_relationship(
     reference_segments: Optional[list[dict]] = None,
     correlation_threshold: int = DEFAULT_CORRELATION_THRESHOLD,
     max_lag_cap: int = DEFAULT_MAX_LAG_CAP,
-    lang: str = "en",
 ) -> dict:
     """
     Analyze relationship between two time series.
 
-    Returns structured insights without generating narrative text. Use this
-    function when you want to inspect or store the analysis results separately
-    from narrative generation.
+    Returns structured, **language-neutral** insights without generating
+    narrative text. Direction and strength fields are stable keys (e.g.
+    ``"increased"``, ``"strength_weak"``) — translation is performed by the
+    narrative layer. This makes the returned dict safe to store and reuse
+    across languages.
+
+    Use this function when you want to inspect or store the analysis results
+    separately from narrative generation.
 
     Chooses analysis method based on data availability:
     - Insufficient data: < 3 points
@@ -444,7 +453,7 @@ def analyze_relationship(
         }
 
     segment_details = [
-        analyze_segment_comovement(seg, comparison_years, comparison_values, lang=lang)
+        analyze_segment_comovement(seg, comparison_years, comparison_values)
         for seg in reference_segments
     ]
 

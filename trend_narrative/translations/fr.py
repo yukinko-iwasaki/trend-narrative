@@ -30,11 +30,15 @@ STRINGS: dict[str, object] = {
     ),
 
     # narrative.py — multi-segment
-    "an_upward": "une tendance à la hausse",
-    "a_downward": "une tendance à la baisse",
+    # Trend phrase: complete noun phrase used with the "first segment" template.
+    "trend_upward": "une tendance à la hausse",
+    "trend_downward": "une tendance à la baisse",
+    # Path phrase: adjective form used with "poursuivant sa trajectoire {…}".
+    "path_upward": "ascendante",
+    "path_downward": "descendante",
     "first_segment": (
         "De {start_year} à {end_year}, "
-        "{metric} a affiché {direction}."
+        "{metric} a affiché {trend_phrase}."
     ),
     "transition_prefixes": [
         "La tendance s'est ensuite inversée,",
@@ -49,9 +53,10 @@ STRINGS: dict[str, object] = {
         "atteignant un creux en {year} "
         "suivi d'une reprise."
     ),
-    "continuing": "poursuivant sa trajectoire {direction} jusqu'en {year}.",
+    "continuing": "poursuivant sa trajectoire {path_phrase} jusqu'en {year}.",
 
     # relationship_narrative.py — comovement
+    "period_from_to": "de {start} à {end}",
     "unable_to_analyze": (
         "Impossible d'analyser la relation entre {x} et {y}."
     ),
@@ -88,6 +93,7 @@ STRINGS: dict[str, object] = {
     # relationship_narrative.py — lagged correlation
     "timing_same": "au cours de la même {time_unit}",
     "timing_lagged": "environ {lag} {time_unit_pl} plus tard",
+    "lag_info_tested": " à tout décalage testé (0-{max_lag} {time_unit_pl})",
     "no_reliable_relationship": (
         "Aucune relation fiable n'a été détectée entre les variations de {x} "
         "et de {y}. "

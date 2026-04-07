@@ -53,8 +53,6 @@ def _build_comovement_narrative(
     if total_comparison_points == 0:
         return t["no_data_available"].format(x=reference_name, y=comparison_name)
 
-    remained_stable = t["remained_stable"]
-
     # Only build narratives for segments with comparison data
     narratives = []
 
@@ -63,18 +61,23 @@ def _build_comovement_narrative(
         if comp_n == 0:
             continue
 
-        period = f"from {seg['start_year']} to {seg['end_year']}"
-        ref_dir = seg["reference_direction"]
-        comp_dir = seg["comparison_direction"]
+        period = t["period_from_to"].format(
+            start=seg["start_year"], end=seg["end_year"]
+        )
+        # Language-neutral keys from the analysis layer
+        ref_dir_key = seg["reference_direction"]
+        comp_dir_key = seg["comparison_direction"]
 
         ref_start = _format_value(seg["reference_start"], reference_format)
         ref_end = _format_value(seg["reference_end"], reference_format)
 
         # Override direction if formatted values are the same
         if ref_start == ref_end:
-            ref_dir = remained_stable
+            ref_dir_key = "remained_stable"
 
-        if comp_dir is None:
+        ref_dir = t[ref_dir_key]
+
+        if comp_dir_key is None:
             if comp_n == 1:
                 comp_start = _format_value(seg["comparison_start"], comparison_format)
                 seg_narrative = t["single_observation"].format(
@@ -95,15 +98,17 @@ def _build_comovement_narrative(
 
             # Override direction if formatted values are the same
             if comp_start == comp_end:
-                comp_dir = remained_stable
+                comp_dir_key = "remained_stable"
 
-            # Describe co-movement
-            if ref_dir == comp_dir:
+            # Describe co-movement (compare against keys, not translated strings)
+            if ref_dir_key == comp_dir_key:
                 relationship = t["both_same_direction"]
-            elif ref_dir == remained_stable or comp_dir == remained_stable:
+            elif ref_dir_key == "remained_stable" or comp_dir_key == "remained_stable":
                 relationship = None
             else:
                 relationship = t["opposite_directions"]
+
+            comp_dir = t[comp_dir_key]
 
             if relationship:
                 seg_narrative = t["comovement_with_rel"].format(
@@ -160,7 +165,8 @@ def _build_lagged_correlation_narrative(
     lag = best_lag["lag"]
     n_pairs = best_lag["n_pairs"]
 
-    strength = get_correlation_strength(correlation, lang=lang)
+    strength_key = get_correlation_strength(correlation)
+    strength = t[strength_key]
     is_significant = p_value < P_THRESHOLD
 
     # Determine which series leads based on computation
@@ -177,25 +183,25 @@ def _build_lagged_correlation_narrative(
             lag=lag, time_unit_pl=_pluralize(time_unit, lag)
         )
 
-    # Check for "no" strength using the translated value
-    no_strength = t["strength_no"]
-
-    # Not significant: lead with uncertainty
-    if strength == no_strength or not is_significant:
+    # Not significant: lead with uncertainty (compare against the key, not the translated value)
+    if strength_key == "strength_no" or not is_significant:
         narrative = t["no_reliable_relationship"].format(
             x=reference_name, y=comparison_name
         )
-        if strength != no_strength:
+        if strength_key != "strength_no":
             sign = t["positive"] if correlation > 0 else t["negative"]
             narrative += t["weak_pattern"].format(
                 strength=strength, sign=sign,
                 corr=correlation, n_pairs=n_pairs, p_val=p_value,
             )
         else:
-            lag_info = (
-                "" if max_lag_tested == 0
-                else f" at any lag tested (0-{max_lag_tested} {_pluralize(time_unit, max_lag_tested)})"
-            )
+            if max_lag_tested == 0:
+                lag_info = ""
+            else:
+                lag_info = t["lag_info_tested"].format(
+                    max_lag=max_lag_tested,
+                    time_unit_pl=_pluralize(time_unit, max_lag_tested),
+                )
             narrative += t["no_association"].format(
                 lag_info=lag_info, n_pairs=n_pairs, time_unit=time_unit,
             )
@@ -296,7 +302,15 @@ def get_relationship_narrative(
         - None (default): inferred from sparsity (sparser series is the follower)
     insights : dict, optional
         Pre-computed insights from analyze_relationship() (Path 2).
-        If provided, raw data arrays are ignored.
+        If provided, raw data arrays are ignored. Insights are language-neutral
+        and can be rendered in any supported language.
+    lang : str
+        Language code for the generated narrative (default ``"en"``).
+        Supported values are listed in
+        :data:`trend_narrative.SUPPORTED_LANGUAGES` (currently ``"en"``, ``"fr"``).
+        Only the rendered narrative text depends on this; the returned
+        analysis fields (``method``, ``segment_details``, ``best_lag``, …)
+        are language-neutral.
 
     Returns
     -------
@@ -328,7 +342,6 @@ def get_relationship_narrative(
             reference_segments=reference_segments,
             correlation_threshold=correlation_threshold,
             max_lag_cap=max_lag_cap,
-            lang=lang,
         )
     else:
         raise ValueError(
