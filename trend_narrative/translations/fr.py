@@ -4,6 +4,17 @@ Catalogue de chaînes françaises pour la génération de récits.
 """
 
 STRINGS: dict[str, object] = {
+    # Time unit singular/plural forms, keyed by the English `time_unit` arg
+    # passed to relationship narrative APIs. Unknown keys fall back to the
+    # raw string unchanged.
+    "time_units": {
+        "year": ("année", "années"),
+        "month": ("mois", "mois"),
+        "quarter": ("trimestre", "trimestres"),
+        "week": ("semaine", "semaines"),
+        "day": ("jour", "jours"),
+    },
+
     # Direction words
     "unknown": "inconnu",
     "remained_stable": "est resté stable",
@@ -93,7 +104,6 @@ STRINGS: dict[str, object] = {
     # relationship_narrative.py — lagged correlation
     "timing_same": "au cours de la même {time_unit}",
     "timing_lagged": "environ {lag} {time_unit_pl} plus tard",
-    "lag_info_tested": " à tout décalage testé (0-{max_lag} {time_unit_pl})",
     "no_reliable_relationship": (
         "Aucune relation fiable n'a été détectée entre les variations de {x} "
         "et de {y}. "
@@ -104,7 +114,12 @@ STRINGS: dict[str, object] = {
         "compte tenu de la taille limitée de l'échantillon (n={n_pairs} paires, p={p_val:.2f})."
     ),
     "no_association": (
-        "Les variations de l'un ne semblent pas être associées aux variations de l'autre{lag_info}, "
+        "Les variations de l'un ne semblent pas être associées aux variations de l'autre, "
+        "sur la base de {n_pairs} comparaisons d'{time_unit} en {time_unit}."
+    ),
+    "no_association_with_lag": (
+        "Les variations de l'un ne semblent pas être associées aux variations de l'autre "
+        "à tout décalage testé (0-{max_lag} {time_unit_pl}), "
         "sur la base de {n_pairs} comparaisons d'{time_unit} en {time_unit}."
     ),
     "significant_finding": (

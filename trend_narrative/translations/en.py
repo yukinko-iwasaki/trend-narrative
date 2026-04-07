@@ -3,6 +3,17 @@ English string catalog for narrative generation.
 """
 
 STRINGS: dict[str, object] = {
+    # Time unit singular/plural forms, keyed by the `time_unit` arg passed
+    # to relationship narrative APIs. Unknown keys fall back to the raw
+    # string + naive English "s" suffix.
+    "time_units": {
+        "year": ("year", "years"),
+        "month": ("month", "months"),
+        "quarter": ("quarter", "quarters"),
+        "week": ("week", "weeks"),
+        "day": ("day", "days"),
+    },
+
     # Direction words (used by relationship_analysis + narratives)
     "unknown": "unknown",
     "remained_stable": "remained stable",
@@ -92,7 +103,6 @@ STRINGS: dict[str, object] = {
     # relationship_narrative.py — lagged correlation
     "timing_same": "in the same {time_unit}",
     "timing_lagged": "about {lag} {time_unit_pl} later",
-    "lag_info_tested": " at any lag tested (0-{max_lag} {time_unit_pl})",
     "no_reliable_relationship": (
         "No reliable relationship was detected between changes in {x} "
         "and {y}. "
@@ -103,7 +113,12 @@ STRINGS: dict[str, object] = {
         "given the limited sample size (n={n_pairs} change pairs, p={p_val:.2f})."
     ),
     "no_association": (
-        "Changes in one do not appear to be associated with changes in the other{lag_info}, "
+        "Changes in one do not appear to be associated with changes in the other, "
+        "based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
+    ),
+    "no_association_with_lag": (
+        "Changes in one do not appear to be associated with changes in the other "
+        "at any lag tested (0-{max_lag} {time_unit_pl}), "
         "based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
     ),
     "significant_finding": (

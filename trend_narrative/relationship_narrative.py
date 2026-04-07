@@ -30,9 +30,21 @@ def _format_value(value: float, fmt: Formatter) -> str:
     return f"{value:{fmt}}"
 
 
-def _pluralize(word: str, count: int) -> str:
-    """Return plural form if count != 1."""
-    return word if count == 1 else f"{word}s"
+def _resolve_time_unit(t: dict, time_unit: str, count: int) -> str:
+    """Return the singular or plural form of ``time_unit`` in the target language.
+
+    Looks up ``time_unit`` in the catalog's ``time_units`` table (e.g.
+    ``"year" -> ("year", "years")`` or ``("année", "années")``) and returns
+    the form matching ``count``. Falls back to naive English pluralization
+    (append ``"s"``) for unknown keys so custom units still work, at the
+    cost of correct localization.
+    """
+    units = t.get("time_units", {})
+    entry = units.get(time_unit)
+    if entry is None:
+        return time_unit if count == 1 else f"{time_unit}s"
+    singular, plural = entry
+    return singular if count == 1 else plural
 
 
 def _build_comovement_narrative(
@@ -169,6 +181,10 @@ def _build_lagged_correlation_narrative(
     strength = t[strength_key]
     is_significant = p_value < P_THRESHOLD
 
+    # Resolve localized forms of time_unit. These are the ONLY strings that
+    # should flow into time_unit template slots — never the raw English arg.
+    time_unit_sg = _resolve_time_unit(t, time_unit, 1)
+
     # Determine which series leads based on computation
     if reference_leads:
         leader_name, follower_name = reference_name, comparison_name
@@ -177,10 +193,10 @@ def _build_lagged_correlation_narrative(
 
     # Build lag timing description
     if lag == 0:
-        timing = t["timing_same"].format(time_unit=time_unit)
+        timing = t["timing_same"].format(time_unit=time_unit_sg)
     else:
         timing = t["timing_lagged"].format(
-            lag=lag, time_unit_pl=_pluralize(time_unit, lag)
+            lag=lag, time_unit_pl=_resolve_time_unit(t, time_unit, lag)
         )
 
     # Not significant: lead with uncertainty (compare against the key, not the translated value)
@@ -194,16 +210,16 @@ def _build_lagged_correlation_narrative(
                 strength=strength, sign=sign,
                 corr=correlation, n_pairs=n_pairs, p_val=p_value,
             )
-        else:
-            if max_lag_tested == 0:
-                lag_info = ""
-            else:
-                lag_info = t["lag_info_tested"].format(
-                    max_lag=max_lag_tested,
-                    time_unit_pl=_pluralize(time_unit, max_lag_tested),
-                )
+        elif max_lag_tested == 0:
             narrative += t["no_association"].format(
-                lag_info=lag_info, n_pairs=n_pairs, time_unit=time_unit,
+                n_pairs=n_pairs, time_unit=time_unit_sg,
+            )
+        else:
+            narrative += t["no_association_with_lag"].format(
+                max_lag=max_lag_tested,
+                time_unit_pl=_resolve_time_unit(t, time_unit, max_lag_tested),
+                n_pairs=n_pairs,
+                time_unit=time_unit_sg,
             )
     else:
         # Significant: lead with the finding
@@ -212,7 +228,7 @@ def _build_lagged_correlation_narrative(
             leader=leader_name, follower=follower_name,
             direction_word=direction_word, timing=timing,
             strength=strength, corr=correlation, p_val=p_value,
-            n_pairs=n_pairs, time_unit=time_unit,
+            n_pairs=n_pairs, time_unit=time_unit_sg,
         )
 
     return narrative
