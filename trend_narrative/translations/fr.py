@@ -1,6 +1,6 @@
 """
 French string catalog for narrative generation.
-Catalogue de chaînes françaises pour la génération de récits.
+Catalogue de chaînes de caractères françaises pour la génération narrative.
 """
 
 STRINGS: dict[str, object] = {
@@ -97,7 +97,7 @@ STRINGS: dict[str, object] = {
         "({comp_start} à {comp_end})"
     ),
     "limited_data_caveat": (
-        " Avec des données limitées sur {comp_name}, "
+        "Avec des données limitées sur {comp_name}, "
         "une relation statistique ne peut être établie."
     ),
 
