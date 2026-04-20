@@ -4,7 +4,7 @@ trend_narrative.relationship_narrative
 Generate human-readable narratives from relationship analysis results.
 
 This module handles the text generation layer, converting structured
-analysis outputs into plain-English descriptions.
+analysis outputs into plain-language descriptions.
 """
 
 from __future__ import annotations
@@ -18,8 +18,10 @@ from .relationship_analysis import (
     DEFAULT_MAX_LAG_CAP,
     P_THRESHOLD,
 )
+from .translations import get_translations, icu_format, _unpack_metric
 
 Formatter = Union[str, Callable[[float], str]]
+MetricLike = Union[str, dict]
 
 
 def _format_value(value: float, fmt: Formatter) -> str:
@@ -29,9 +31,96 @@ def _format_value(value: float, fmt: Formatter) -> str:
     return f"{value:{fmt}}"
 
 
-def _pluralize(word: str, count: int) -> str:
-    """Return plural form if count != 1."""
-    return word if count == 1 else f"{word}s"
+def _resolve_time_unit(t: dict, time_unit: str, count: int) -> str:
+    """Return the singular or plural form of ``time_unit`` in the target language.
+
+    Looks up ``time_unit`` in the catalog's ``time_units`` table (e.g.
+    ``"year" -> ("year", "years")`` or ``("année", "années")``) and returns
+    the form matching ``count``. Falls back to naive English pluralization
+    (append ``"s"``) for unknown keys so custom units still work, at the
+    cost of correct localization.
+    """
+    units = t.get("time_units", {})
+    entry = units.get(time_unit)
+    if entry is None:
+        return time_unit if count == 1 else f"{time_unit}s"
+    singular, plural = entry
+    return singular if count == 1 else plural
+
+
+_FRENCH_VOWELS = frozenset("aeiouyàâéèêëïîôùûüœæ")
+
+
+def _genitive_fr(name: str) -> str:
+    """French genitive: prefix *name* with the right form of "de".
+
+    Handles article contractions and vowel elision:
+
+    * ``de + le`` → ``du`` (e.g. "du taux")
+    * ``de + les`` → ``des`` (e.g. "des dépenses")
+    * ``de + la`` → ``de la`` (no contraction; feminine article stays)
+    * ``de + l'`` → ``de l'`` (no contraction)
+    * ``de`` + consonant-initial bare noun → ``de …``
+    * ``de`` + vowel-initial bare noun → ``d'…`` (elision)
+    """
+    if not name:
+        return name
+    # Articles with a trailing space come first (more specific prefixes)
+    if name.startswith("les "):
+        return "des " + name[4:]
+    if name.startswith("le "):
+        return "du " + name[3:]
+    if name.startswith(("la ", "l'")):
+        return "de " + name
+    first = name[0].lower()
+    if first in _FRENCH_VOWELS:
+        return "d'" + name
+    return "de " + name
+
+
+def _genitive(lang: str, name: str) -> str:
+    """Return the genitive ("of X") form of *name* in the given language.
+
+    The genitive role expresses attribution / origin ("of X", "X's").
+    Every language produces this differently:
+
+    * English: ``of {name}``
+    * French: ``de/du/des/d' {name}`` (article contraction + vowel elision)
+    * Italian: ``di/del/della/...`` (contraction like French; not yet implemented)
+    * Spanish: ``de/del`` (``de + el → del``; not yet implemented)
+
+    Add a new language by implementing ``_genitive_<lang>(name)`` and
+    dispatching here.  Unknown languages return *name* unchanged.
+    """
+    if not name:
+        return name
+    if lang == "fr":
+        return _genitive_fr(name)
+    if lang == "en":
+        return "of " + name
+    return name
+
+
+def _grammar_to_icu(grammar: Optional[dict[str, bool]] = None) -> dict[str, str]:
+    """Convert a grammar dict to ICU select keyword values."""
+    g = grammar or {}
+    return {
+        "number": "plural" if g.get("plural") else "singular",
+        "gender": "feminine" if g.get("feminine") else "masculine",
+    }
+
+
+def _time_unit_comparison(lang: str, time_unit_sg: str) -> str:
+    """Build the 'year-over-year' / 'd'année en année' phrase.
+
+    Handles French elision: ``d'année en année`` (vowel) vs
+    ``de mois en mois`` (consonant).
+    """
+    if lang == "fr":
+        first_char = time_unit_sg[0].lower() if time_unit_sg else ""
+        prep = "d'" if first_char in _FRENCH_VOWELS else "de "
+        return f"{prep}{time_unit_sg} en {time_unit_sg}"
+    return f"{time_unit_sg}-over-{time_unit_sg}"
 
 
 def _build_comovement_narrative(
@@ -40,16 +129,22 @@ def _build_comovement_narrative(
     comparison_name: str,
     reference_format: Formatter = ".2f",
     comparison_format: Formatter = ".2f",
+    lang: str = "en",
+    reference_grammar: Optional[dict] = None,
+    comparison_grammar: Optional[dict] = None,
 ) -> str:
     """Build narrative from segment-level co-movement analysis."""
+    t = get_translations(lang)
+
     if not segment_details:
-        return f"Unable to analyze relationship between {reference_name} and {comparison_name}."
+        return t["unable_to_analyze"].format(x=reference_name, y=comparison_name)
 
     total_comparison_points = sum(seg["comparison_n_points"] for seg in segment_details)
     if total_comparison_points == 0:
-        return (
-            f"The relationship between {reference_name} and {comparison_name} "
-            f"cannot be determined because {comparison_name} data is not available."
+        return t["no_data_available"].format(
+            x=reference_name, y=comparison_name,
+            x_gen=_genitive(lang, reference_name),
+            y_gen=_genitive(lang, comparison_name),
         )
 
     # Only build narratives for segments with comparison data
@@ -60,31 +155,40 @@ def _build_comovement_narrative(
         if comp_n == 0:
             continue
 
-        period = f"from {seg['start_year']} to {seg['end_year']}"
-        ref_dir = seg["reference_direction"]
-        comp_dir = seg["comparison_direction"]
+        period = t["period_from_to"].format(
+            start=seg["start_year"], end=seg["end_year"]
+        )
+        # Language-neutral keys from the analysis layer
+        ref_dir_key = seg["reference_direction"]
+        comp_dir_key = seg["comparison_direction"]
 
         ref_start = _format_value(seg["reference_start"], reference_format)
         ref_end = _format_value(seg["reference_end"], reference_format)
 
         # Override direction if formatted values are the same
         if ref_start == ref_end:
-            ref_dir = "remained stable"
+            ref_dir_key = "remained_stable"
 
-        if comp_dir is None:
+        ref_icu = _grammar_to_icu(reference_grammar)
+        ref_dir = icu_format(t[ref_dir_key], **ref_icu)
+
+        if comp_dir_key is None:
             if comp_n == 1:
                 comp_start = _format_value(seg["comparison_start"], comparison_format)
-                seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} "
-                    f"({ref_start} to {ref_end}), "
-                    f"with only one {comparison_name} observation ({comp_start})"
+                seg_narrative = t["single_observation"].format(
+                    period=period, ref_name=reference_name, ref_dir=ref_dir,
+                    ref_start=ref_start, ref_end=ref_end,
+                    comp_name=comparison_name, comp_start=comp_start,
+                    comp_name_gen=_genitive(lang, comparison_name),
                 )
             else:
-                # Multiple observations but all same value - remained stable
                 comp_start = _format_value(seg["comparison_start"], comparison_format)
-                seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} ({ref_start} to {ref_end}) "
-                    f"while {comparison_name} remained stable ({comp_start})"
+                comp_icu = _grammar_to_icu(comparison_grammar)
+                stable_tpl = icu_format(t["stable_comparison"], **comp_icu)
+                seg_narrative = stable_tpl.format(
+                    period=period, ref_name=reference_name, ref_dir=ref_dir,
+                    ref_start=ref_start, ref_end=ref_end,
+                    comp_name=comparison_name, comp_start=comp_start,
                 )
         else:
             comp_start = _format_value(seg["comparison_start"], comparison_format)
@@ -92,27 +196,33 @@ def _build_comovement_narrative(
 
             # Override direction if formatted values are the same
             if comp_start == comp_end:
-                comp_dir = "remained stable"
+                comp_dir_key = "remained_stable"
 
-            # Describe co-movement
-            if ref_dir == comp_dir:
-                relationship = "both moving in the same direction"
-            elif ref_dir == "remained stable" or comp_dir == "remained stable":
+            # Describe co-movement (compare against keys, not translated strings)
+            if ref_dir_key == comp_dir_key:
+                relationship = t["both_same_direction"]
+            elif ref_dir_key == "remained_stable" or comp_dir_key == "remained_stable":
                 relationship = None
             else:
-                relationship = "moving in opposite directions"
+                relationship = t["opposite_directions"]
+
+            comp_icu = _grammar_to_icu(comparison_grammar)
+            comp_dir = icu_format(t[comp_dir_key], **comp_icu)
 
             if relationship:
-                seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} ({ref_start} to {ref_end}) "
-                    f"while {comparison_name} {comp_dir} "
-                    f"({comp_start} to {comp_end}), {relationship}"
+                seg_narrative = t["comovement_with_rel"].format(
+                    period=period, ref_name=reference_name, ref_dir=ref_dir,
+                    ref_start=ref_start, ref_end=ref_end,
+                    comp_name=comparison_name, comp_dir=comp_dir,
+                    comp_start=comp_start, comp_end=comp_end,
+                    relationship=relationship,
                 )
             else:
-                seg_narrative = (
-                    f"{period}, {reference_name} {ref_dir} ({ref_start} to {ref_end}) "
-                    f"while {comparison_name} {comp_dir} "
-                    f"({comp_start} to {comp_end})"
+                seg_narrative = t["comovement_no_rel"].format(
+                    period=period, ref_name=reference_name, ref_dir=ref_dir,
+                    ref_start=ref_start, ref_end=ref_end,
+                    comp_name=comparison_name, comp_dir=comp_dir,
+                    comp_start=comp_start, comp_end=comp_end,
                 )
 
         # Capitalize first letter
@@ -126,10 +236,7 @@ def _build_comovement_narrative(
         narrative = ". ".join(narratives) + "."
 
     # Add caveat about limited data
-    narrative += (
-        f" With limited {comparison_name} data, "
-        "a statistical relationship cannot be established."
-    )
+    narrative += t["limited_data_caveat"].format(comp_name=comparison_name)
 
     return narrative
 
@@ -143,19 +250,29 @@ def _build_lagged_correlation_narrative(
     comparison_name: str,
     time_unit: str = "year",
     reference_leads: bool = True,
+    lang: str = "en",
+    leader_grammar: Optional[dict[str, bool]] = None,
+    follower_grammar: Optional[dict[str, bool]] = None,
 ) -> str:
     """Build narrative from lagged correlation analysis.
 
     When reference_leads=True: "When reference increases, comparison follows"
     When reference_leads=False: "When comparison increases, reference follows"
     """
+    t = get_translations(lang)
+
     correlation = best_lag["correlation"]
     p_value = best_lag["p_value"]
     lag = best_lag["lag"]
     n_pairs = best_lag["n_pairs"]
 
-    strength = get_correlation_strength(correlation)
+    strength_key = get_correlation_strength(correlation)
+    strength = t[strength_key]
     is_significant = p_value < P_THRESHOLD
+
+    # Resolve localized forms of time_unit. These are the ONLY strings that
+    # should flow into time_unit template slots — never the raw English arg.
+    time_unit_sg = _resolve_time_unit(t, time_unit, 1)
 
     # Determine which series leads based on computation
     if reference_leads:
@@ -165,40 +282,61 @@ def _build_lagged_correlation_narrative(
 
     # Build lag timing description
     if lag == 0:
-        timing = f"in the same {time_unit}"
+        # Resolve grammatical gender of the time unit so French can switch
+        # between "la même {unit}" (feminine) and "du même {unit}"
+        # (masculine). English has no gender select so the key is ignored.
+        unit_gender = t.get("time_unit_genders", {}).get(time_unit, "other")
+        timing_tpl = icu_format(t["timing_same"], gender=unit_gender)
+        timing = timing_tpl.format(time_unit=time_unit_sg)
     else:
-        timing = f"about {lag} {_pluralize(time_unit, lag)} later"
-
-    # Not significant: lead with uncertainty
-    if strength == "no" or not is_significant:
-        narrative = (
-            f"No reliable relationship was detected between changes in {reference_name} "
-            f"and {comparison_name}. "
+        timing = t["timing_lagged"].format(
+            lag=lag, time_unit_pl=_resolve_time_unit(t, time_unit, lag)
         )
-        if strength != "no":
-            narrative += (
-                f"While the data suggests a {strength} {'positive' if correlation > 0 else 'negative'} "
-                f"pattern (r={correlation:.2f}), this could be due to chance "
-                f"given the limited sample size (n={n_pairs} change pairs, p={p_value:.2f})."
+
+    tu_comparison = _time_unit_comparison(lang, time_unit_sg)
+
+    # Not significant: lead with uncertainty (compare against the key, not the translated value)
+    if strength_key == "strength_no" or not is_significant:
+        narrative = t["no_reliable_relationship"].format(
+            x=reference_name, y=comparison_name,
+            x_gen=_genitive(lang, reference_name),
+            y_gen=_genitive(lang, comparison_name),
+        )
+        if strength_key != "strength_no":
+            sign = t["positive"] if correlation > 0 else t["negative"]
+            narrative += t["weak_pattern"].format(
+                strength=strength, sign=sign,
+                corr=correlation, n_pairs=n_pairs, p_val=p_value,
+            )
+        elif max_lag_tested == 0:
+            narrative += t["no_association"].format(
+                n_pairs=n_pairs, time_unit_comparison=tu_comparison,
             )
         else:
-            lag_info = (
-                "" if max_lag_tested == 0
-                else f" at any lag tested (0-{max_lag_tested} {_pluralize(time_unit, max_lag_tested)})"
-            )
-            narrative += (
-                f"Changes in one do not appear to be associated with changes in the other{lag_info}, "
-                f"based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
+            narrative += t["no_association_with_lag"].format(
+                max_lag=max_lag_tested,
+                time_unit_pl=_resolve_time_unit(t, time_unit, max_lag_tested),
+                n_pairs=n_pairs,
+                time_unit_comparison=tu_comparison,
             )
     else:
-        # Significant: lead with the finding
-        direction_word = "increase" if correlation > 0 else "decrease"
-        narrative = (
-            f"When {leader_name} increases, {follower_name} tends to "
-            f"{direction_word} {timing}. "
-            f"This is a {strength} relationship (r={correlation:.2f}) "
-            f"and is statistically reliable (p={p_value:.3f}), "
-            f"based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
+        # Significant: lead with the finding.
+        # The template has two verbs — "Lorsque {leader} augmente/augmentent"
+        # (agreeing with the leader) and "{follower} tend/tendent"
+        # (agreeing with the follower). Each uses its own number select.
+        direction_word = t["increase"] if correlation > 0 else t["decrease"]
+        leader_icu = _grammar_to_icu(leader_grammar)
+        follower_icu = _grammar_to_icu(follower_grammar)
+        sig_tpl = icu_format(
+            t["significant_finding"],
+            leader_number=leader_icu["number"],
+            follower_number=follower_icu["number"],
+        )
+        narrative = sig_tpl.format(
+            leader=leader_name, follower=follower_name,
+            direction_word=direction_word, timing=timing,
+            strength=strength, corr=correlation, p_val=p_value,
+            n_pairs=n_pairs, time_unit_comparison=tu_comparison,
         )
 
     return narrative
@@ -209,8 +347,8 @@ def get_relationship_narrative(
     reference_values: "array-like" = None,
     comparison_years: "array-like" = None,
     comparison_values: "array-like" = None,
-    reference_name: str = "",
-    comparison_name: str = "",
+    reference_name: MetricLike = "",
+    comparison_name: MetricLike = "",
     reference_segments: Optional[list[dict]] = None,
     correlation_threshold: int = DEFAULT_CORRELATION_THRESHOLD,
     max_lag_cap: int = DEFAULT_MAX_LAG_CAP,
@@ -219,6 +357,7 @@ def get_relationship_narrative(
     time_unit: str = "year",
     reference_leads: Optional[bool] = None,
     insights: Optional[dict] = None,
+    lang: str = "en",
 ) -> dict:
     """
     Analyze relationship between two time series and generate narrative.
@@ -259,10 +398,18 @@ def get_relationship_narrative(
         Year values for the comparison series (Path 1).
     comparison_values : array-like, optional
         Data values for the comparison series (Path 1).
-    reference_name : str
-        Display name for the reference series.
-    comparison_name : str
-        Display name for the comparison series.
+    reference_name : str or dict
+        Display name for the reference series. May be either a plain
+        string or a dict bundling the name with grammatical properties
+        for French inflection::
+
+            {"name": "les dépenses", "plural": True, "feminine": True}
+
+        The ``plural`` / ``feminine`` keys default to ``False`` and are
+        ignored for English.
+    comparison_name : str or dict
+        Display name for the comparison series. Same accepted shapes as
+        *reference_name*.
     reference_segments : list[dict], optional
         Pre-computed segments from InsightExtractor for the reference series.
         Each dict should contain: start_year, end_year, start_value, end_value.
@@ -287,7 +434,15 @@ def get_relationship_narrative(
         - None (default): inferred from sparsity (sparser series is the follower)
     insights : dict, optional
         Pre-computed insights from analyze_relationship() (Path 2).
-        If provided, raw data arrays are ignored.
+        If provided, raw data arrays are ignored. Insights are language-neutral
+        and can be rendered in any supported language.
+    lang : str
+        Language code for the generated narrative (default ``"en"``).
+        Supported values are listed in
+        :data:`trend_narrative.SUPPORTED_LANGUAGES` (currently ``"en"``, ``"fr"``).
+        Only the rendered narrative text depends on this; the returned
+        analysis fields (``method``, ``segment_details``, ``best_lag``, …)
+        are language-neutral.
 
     Returns
     -------
@@ -306,6 +461,13 @@ def get_relationship_narrative(
     ValueError
         If neither insights nor data arrays are provided.
     """
+    t = get_translations(lang)
+
+    # Unpack metric names — each may be a plain string or a dict bundling
+    # the display name with grammatical properties (plural/feminine).
+    reference_name, reference_grammar = _unpack_metric(reference_name)
+    comparison_name, comparison_grammar = _unpack_metric(comparison_name)
+
     if insights is not None:
         analysis = insights
     elif reference_years is not None and comparison_years is not None:
@@ -331,11 +493,19 @@ def get_relationship_narrative(
     n_points = analysis["n_points"]
 
     if method == "insufficient_data":
-        narrative = (
-            f"The relationship between {reference_name} and {comparison_name} "
-            "cannot be determined due to limited data availability."
+        narrative = t["insufficient_data"].format(
+            x=reference_name, y=comparison_name
         )
     elif method == "lagged_correlation":
+        # The significant_finding template has two subject-verb pairs —
+        # "{leader} augmente/augmentent" and "{follower} tend/tendent" —
+        # each needing its own grammar for correct French agreement.
+        if reference_leads or reference_leads is None:
+            leader_grammar = reference_grammar
+            follower_grammar = comparison_grammar
+        else:
+            leader_grammar = comparison_grammar
+            follower_grammar = reference_grammar
         narrative = _build_lagged_correlation_narrative(
             analysis["best_lag"],
             analysis["all_lags"],
@@ -345,6 +515,9 @@ def get_relationship_narrative(
             comparison_name,
             time_unit,
             reference_leads=reference_leads,
+            lang=lang,
+            leader_grammar=leader_grammar,
+            follower_grammar=follower_grammar,
         )
     else:
         narrative = _build_comovement_narrative(
@@ -353,6 +526,9 @@ def get_relationship_narrative(
             comparison_name,
             reference_format=reference_format,
             comparison_format=comparison_format,
+            lang=lang,
+            reference_grammar=reference_grammar,
+            comparison_grammar=comparison_grammar,
         )
 
     return {

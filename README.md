@@ -6,9 +6,11 @@
 
 ## Overview
 
-The **trend-narrative** package is a standalone Python library that combines **piecewise-linear trend detection**, **relationship analysis**, and **plain-English narrative generation** for time-series data.
+The **trend-narrative** package is a standalone Python library that combines **piecewise-linear trend detection**, **relationship analysis**, and **multilingual narrative generation** for time-series data.
 
-Given a time series — such as annual health spending or GDP figures — this package automatically identifies meaningful trends (e.g., "rising from 2010 to 2015, then declining") and produces a ready-to-use English sentence describing them. It can also compare two time series and explain how they move together or apart over time.
+Given a time series — such as annual health spending or GDP figures — this package automatically identifies meaningful trends (e.g., "rising from 2010 to 2015, then declining") and produces a ready-to-use sentence describing them. It can also compare two time series and explain how they move together or apart over time.
+
+Narratives can be generated in **English** and **French**, with an extensible architecture for adding more languages.
 
 This is useful for analysts, researchers, and developers who need to turn numeric data into human-readable summaries without writing custom text logic each time.
 
@@ -100,6 +102,36 @@ narrative = get_segment_narrative(
 )
 ```
 
+### Multilingual Support
+
+All narrative functions accept a `lang` parameter. The default is `"en"` (English), so existing code works unchanged.
+
+```python
+# French narrative
+narrative = get_segment_narrative(extractor=extractor, metric="dépenses de santé", lang="fr")
+# → "De 2010 à 2015, dépenses de santé a affiché une tendance à la hausse.
+#    La tendance s'est ensuite inversée, atteignant un pic en 2015 avant de s'inverser en déclin."
+
+# English (default — same as before)
+narrative = get_segment_narrative(extractor=extractor, metric="health spending")
+```
+
+Relationship narratives work the same way:
+
+```python
+result = get_relationship_narrative(
+    reference_years=years1,
+    reference_values=values1,
+    comparison_years=years2,
+    comparison_values=values2,
+    reference_name="dépenses",
+    comparison_name="résultat",
+    lang="fr",
+)
+```
+
+Currently supported: `"en"` (English), `"fr"` (French). See [Adding a new language](#adding-a-new-language) below.
+
 ### Relationship Narratives
 
 Analyze the relationship between two time series (e.g., spending vs outcomes).
@@ -171,11 +203,11 @@ The function automatically chooses the analysis method based on data availabilit
 
 ## API Reference
 
-### `get_segment_narrative(segments, cv_value, metric="expenditure")`
-### `get_segment_narrative(extractor, metric="expenditure")`
+### `get_segment_narrative(segments, cv_value, metric="expenditure", lang="en")`
+### `get_segment_narrative(extractor, metric="expenditure", lang="en")`
 
-Generates a plain-English narrative for a single time series. Accepts either
-precomputed data or an `InsightExtractor` instance.
+Generates a narrative for a single time series. Accepts either
+precomputed data or an `InsightExtractor` instance. Set `lang="fr"` for French.
 
 - No segments + low CV → *"remained highly stable"*
 - No segments + high CV → *"exhibited significant volatility"*
@@ -233,6 +265,8 @@ get_relationship_narrative(
     reference_leads=None,      # True/False to override, None to infer
     # Precomputed insights
     insights=None,             # dict from analyze_relationship()
+    # Language
+    lang="en",                 # "en" or "fr"
 )
 ```
 
@@ -301,16 +335,43 @@ trend-narrative/
 │   ├── extractor.py             # InsightExtractor – volatility + trend facade
 │   ├── narrative.py             # Narrative generation + millify helper
 │   ├── relationship_analysis.py # Relationship analysis between two series
-│   └── relationship_narrative.py # Relationship narrative generation
+│   ├── relationship_narrative.py # Relationship narrative generation
+│   └── translations/            # Multilingual string catalogs
+│       ├── __init__.py          # get_translations(), SUPPORTED_LANGUAGES
+│       ├── en.py                # English strings
+│       └── fr.py                # French strings
 ├── tests/
 │   ├── test_detector.py
 │   ├── test_extractor.py
 │   ├── test_narrative.py
 │   ├── test_relationship_analysis.py
-│   └── test_relationship_narrative.py
+│   ├── test_relationship_narrative.py
+│   └── test_translations.py     # French language tests
 ├── pyproject.toml
 └── README.md
 ```
+
+---
+
+## Adding a New Language
+
+The translation system is designed for easy extension. To add a new language (e.g. Spanish):
+
+1. **Copy** `trend_narrative/translations/en.py` to `trend_narrative/translations/es.py`
+2. **Translate** every value in the `STRINGS` dict
+3. **Register** the new module in `trend_narrative/translations/__init__.py`:
+
+```python
+from . import en, fr, es  # add the new import
+
+_REGISTRY: dict[str, dict[str, object]] = {
+    "en": en.STRINGS,
+    "fr": fr.STRINGS,
+    "es": es.STRINGS,  # add the new entry
+}
+```
+
+That's it. `SUPPORTED_LANGUAGES` updates automatically, and `lang="es"` will work across the entire API.
 
 ---
 

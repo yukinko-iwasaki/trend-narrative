@@ -37,6 +37,7 @@ from .narrative import (
 )
 from .relationship_analysis import analyze_relationship
 from .relationship_narrative import get_relationship_narrative
+from .translations import SUPPORTED_LANGUAGES
 
 __all__ = [
     "TrendDetector",
@@ -46,6 +47,7 @@ __all__ = [
     "analyze_relationship",
     "get_relationship_narrative",
     "millify",
+    "SUPPORTED_LANGUAGES",
 ]
 
 __version__ = "0.3.0"

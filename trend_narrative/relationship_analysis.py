@@ -20,11 +20,11 @@ from scipy import stats
 
 
 CORRELATION_THRESHOLDS = {
-    0.1: "no",
-    0.3: "weak",
-    0.5: "moderate",
-    0.7: "strong",
-    1.0: "very strong",
+    0.1: "strength_no",
+    0.3: "strength_weak",
+    0.5: "strength_moderate",
+    0.7: "strength_strong",
+    1.0: "strength_very_strong",
 }
 
 THRESHOLD_LOW = 3  # Minimum for any analysis (need 2+ changes to compare)
@@ -34,7 +34,12 @@ P_THRESHOLD = 0.10  # Threshold for statistical significance
 
 
 def get_direction(values: np.ndarray) -> str:
-    """Determine direction from start to end value."""
+    """Determine direction from start to end value.
+
+    Returns a language-neutral key: ``"increased"``, ``"decreased"``,
+    ``"remained_stable"``, or ``"unknown"``. Translation into display text
+    is the narrative layer's responsibility.
+    """
     if len(values) < 2:
         return "unknown"
 
@@ -42,23 +47,28 @@ def get_direction(values: np.ndarray) -> str:
 
     # Use the non-zero value as denominator; if both zero, stable
     if start == 0 and end == 0:
-        return "remained stable"
+        return "remained_stable"
     denominator = abs(start) if start != 0 else abs(end)
     pct_change = (end - start) / denominator
 
     # Less than 5% change is considered stable to avoid overstating minor fluctuations
     if abs(pct_change) < 0.05:
-        return "remained stable"
+        return "remained_stable"
     return "increased" if pct_change > 0 else "decreased"
 
 
 def get_correlation_strength(corr: float) -> str:
-    """Map correlation coefficient to descriptive strength."""
+    """Map correlation coefficient to a descriptive strength key.
+
+    Returns a language-neutral key from :data:`CORRELATION_THRESHOLDS`
+    (e.g. ``"strength_weak"``). Translation into display text is the
+    narrative layer's responsibility.
+    """
     abs_corr = abs(corr)
-    for threshold, strength in sorted(CORRELATION_THRESHOLDS.items()):
+    for threshold, key in sorted(CORRELATION_THRESHOLDS.items()):
         if abs_corr <= threshold:
-            return strength
-    return "very strong"
+            return key
+    return "strength_very_strong"
 
 
 def compute_yoy_changes(
@@ -300,9 +310,14 @@ def analyze_relationship(
     """
     Analyze relationship between two time series.
 
-    Returns structured insights without generating narrative text. Use this
-    function when you want to inspect or store the analysis results separately
-    from narrative generation.
+    Returns structured, **language-neutral** insights without generating
+    narrative text. Direction and strength fields are stable keys (e.g.
+    ``"increased"``, ``"strength_weak"``) — translation is performed by the
+    narrative layer. This makes the returned dict safe to store and reuse
+    across languages.
+
+    Use this function when you want to inspect or store the analysis results
+    separately from narrative generation.
 
     Chooses analysis method based on data availability:
     - Insufficient data: < 3 points
