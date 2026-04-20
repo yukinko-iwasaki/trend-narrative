@@ -22,9 +22,11 @@ Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Union
 
-from .translations import get_translations
+from .translations import get_translations, icu_format, _unpack_metric
+
+MetricLike = Union[str, dict]
 
 if TYPE_CHECKING:
     from .extractor import InsightExtractor
@@ -122,7 +124,7 @@ def consolidate_segments(segments: list[dict]) -> list[dict]:
 def get_segment_narrative(
     segments: Optional[list[dict]] = None,
     cv_value: Optional[float] = None,
-    metric: str = "expenditure",
+    metric: MetricLike = "expenditure",
     extractor: Optional["InsightExtractor"] = None,
     n_points: Optional[int] = None,
     lang: str = "en",
@@ -163,9 +165,17 @@ def get_segment_narrative(
         ``slope``.
     cv_value : float, optional
         Precomputed Coefficient of Variation % (Path 1).
-    metric : str
+    metric : str or dict
         Human-readable metric label used in the generated text
-        (default ``"expenditure"``).
+        (default ``"expenditure"``). May be either:
+
+        * a plain string (e.g. ``"real expenditure"``), or
+        * a dict bundling the display name with grammatical properties
+          used for French inflection (ignored for English)::
+
+              {"name": "les dépenses", "plural": True, "feminine": True}
+
+        The ``plural`` / ``feminine`` keys default to ``False``.
     extractor : InsightExtractor, optional
         A configured :class:`InsightExtractor` instance (Path 2).
         ``extract_full_suite()`` is called internally.
@@ -212,31 +222,43 @@ def get_segment_narrative(
 # ------------------------------------------------------------------
 
 
+def _grammar_to_icu(grammar: Optional[dict[str, bool]] = None) -> dict[str, str]:
+    """Convert a grammar dict to ICU select keyword values."""
+    g = grammar or {}
+    return {
+        "number": "plural" if g.get("plural") else "singular",
+        "gender": "feminine" if g.get("feminine") else "masculine",
+    }
+
+
 def _build_narrative(
     segments: list[dict],
     cv_value: float,
-    metric: str,
+    metric: MetricLike,
     lang: str = "en",
 ) -> str:
     """Core narrative logic shared by both calling paths."""
     t = get_translations(lang)
     segments = consolidate_segments(segments)
+    metric, grammar = _unpack_metric(metric)
+    icu_kw = _grammar_to_icu(grammar)
 
     # --- No detectable trend: fall back to volatility description ---
     if len(segments) == 0:
         if cv_value < CV_LOW_THRESHOLD:
-            return t["vol_low"].format(metric=metric)
+            return icu_format(t["vol_low"], **icu_kw).format(metric=metric)
         elif cv_value <= CV_MODERATE_THRESHOLD:
-            return t["vol_moderate"].format(metric=metric)
+            return icu_format(t["vol_moderate"], **icu_kw).format(metric=metric)
         else:
-            return t["vol_high"].format(metric=metric)
+            return icu_format(t["vol_high"], **icu_kw).format(metric=metric)
 
     # --- Single monotone trend ---
     if len(segments) == 1:
         seg = segments[0]
         total_change = seg["end_value"] - seg["start_value"]
         pct_change = (total_change / seg["start_value"]) * 100 if seg["start_value"] != 0 else 0.0
-        direction = t["increased"] if total_change > 0 else t["decreased"]
+        dir_key = "increased" if total_change > 0 else "decreased"
+        direction = icu_format(t[dir_key], **icu_kw)
         return t["single_segment"].format(
             start_year=int(seg["start_year"]),
             end_year=int(seg["end_year"]),
@@ -251,16 +273,13 @@ def _build_narrative(
     transition_prefixes = t["transition_prefixes"]
     for i, seg in enumerate(segments):
         is_upward = seg["slope"] > 0
-        # Trend phrase is a noun-phrase used in the first-segment template
-        # ("showed an upward trend"); path phrase is the bare adjective used
-        # in "continuing its {…} path". They are not interchangeable —
-        # reusing one in the other context produces ungrammatical output.
         trend_phrase = t["trend_upward"] if is_upward else t["trend_downward"]
         path_phrase = t["path_upward"] if is_upward else t["path_downward"]
 
         if i == 0:
+            first_seg_tpl = icu_format(t["first_segment"], **icu_kw)
             narrative.append(
-                t["first_segment"].format(
+                first_seg_tpl.format(
                     start_year=int(seg["start_year"]),
                     end_year=int(seg["end_year"]),
                     metric=metric,

@@ -14,6 +14,17 @@ STRINGS: dict[str, object] = {
         "day": ("day", "days"),
     },
 
+    # Grammatical gender of time units. English has no grammatical gender,
+    # but this key must exist to satisfy catalog parity; values are unused
+    # by the English "timing_same" template (which has no gender select).
+    "time_unit_genders": {
+        "year": "neuter",
+        "month": "neuter",
+        "quarter": "neuter",
+        "week": "neuter",
+        "day": "neuter",
+    },
+
     # Direction words (used by relationship_analysis + narratives)
     "unknown": "unknown",
     "remained_stable": "remained stable",
@@ -114,19 +125,19 @@ STRINGS: dict[str, object] = {
     ),
     "no_association": (
         "Changes in one do not appear to be associated with changes in the other, "
-        "based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
+        "based on {n_pairs} {time_unit_comparison} comparisons."
     ),
     "no_association_with_lag": (
         "Changes in one do not appear to be associated with changes in the other "
         "at any lag tested (0-{max_lag} {time_unit_pl}), "
-        "based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
+        "based on {n_pairs} {time_unit_comparison} comparisons."
     ),
     "significant_finding": (
         "When {leader} increases, {follower} tends to "
         "{direction_word} {timing}. "
         "This is a {strength} relationship (r={corr:.2f}) "
         "and is statistically reliable (p={p_val:.3f}), "
-        "based on {n_pairs} {time_unit}-over-{time_unit} comparisons."
+        "based on {n_pairs} {time_unit_comparison} comparisons."
     ),
 
     # relationship_narrative.py — insufficient data
