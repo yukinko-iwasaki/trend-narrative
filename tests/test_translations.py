@@ -14,23 +14,21 @@ import numpy as np
 import pytest
 
 from trend_narrative import InsightExtractor, SUPPORTED_LANGUAGES
-from trend_narrative.narrative import (
-    _format_percent,
-    get_segment_narrative,
-    millify,
-)
+from trend_narrative.narrative import get_segment_narrative
 from trend_narrative.relationship_analysis import (
     get_correlation_strength,
     get_direction,
 )
 from trend_narrative.relationship_narrative import get_relationship_narrative
 from trend_narrative.translations import (
+    _format_percent,
     _genitive,
     _resolve_time_unit,
     _time_unit_comparison,
     _unpack_metric,
     get_translations,
     icu_format,
+    millify,
 )
 
 
@@ -211,6 +209,7 @@ class TestMillify:
         (2_000_000, "en", "2.00 M"),
         (3_000_000_000, "en", "3.00 B"),
         (0, "en", "0.00"),
+        (-500_000, "en", "-500.00 K"),
         # French: comma decimal, "Md" for 10^9 (NOT "B" — "billion" in
         # French means 10^12, a false friend with English).
         (1_500, "fr", "1,50 k"),
@@ -218,6 +217,7 @@ class TestMillify:
         (3_000_000_000, "fr", "3,00 Md"),
         (750, "fr", "750,00"),
         (0, "fr", "0,00"),
+        (-500_000, "fr", "-500,00 k"),
     ])
     def test_millify(self, n, lang, expected):
         assert millify(n, lang=lang) == expected

@@ -30,14 +30,10 @@ custom detector without changing the narrative layer.
 
 from .detector import TrendDetector
 from .extractor import InsightExtractor
-from .narrative import (
-    consolidate_segments,
-    get_segment_narrative,
-    millify,
-)
+from .narrative import consolidate_segments, get_segment_narrative
 from .relationship_analysis import analyze_relationship
 from .relationship_narrative import get_relationship_narrative
-from .translations import SUPPORTED_LANGUAGES
+from .translations import SUPPORTED_LANGUAGES, millify
 
 __all__ = [
     "TrendDetector",

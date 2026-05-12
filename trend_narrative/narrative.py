@@ -21,14 +21,15 @@ Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Optional
 
 from .translations import (
     MetricLike,
+    _format_percent,
     _unpack_metric,
     get_translations,
     icu_format,
+    millify,
 )
 
 if TYPE_CHECKING:
@@ -40,58 +41,6 @@ if TYPE_CHECKING:
 
 CV_LOW_THRESHOLD = 5
 CV_MODERATE_THRESHOLD = 15
-
-
-# ------------------------------------------------------------------
-# Formatting helpers
-# ------------------------------------------------------------------
-
-
-def millify(n: float, lang: str = "en") -> str:
-    """Format a large number into a human-readable string with suffix.
-
-    The decimal separator and magnitude suffixes come from the language
-    catalog. French uses "," and "Md" for milliard (10^9), since "B" /
-    "billion" in French refers to 10^12 (false friend with English).
-
-    Examples
-    --------
-    >>> millify(1_500_000)
-    '1.50 M'
-    >>> millify(1_500_000, lang="fr")
-    '1,50 M'
-    >>> millify(3_000_000_000, lang="fr")
-    '3,00 Md'
-    """
-    fmt = get_translations(lang)["number_format"]
-    suffixes = fmt["suffixes"]
-    decimal_sep = fmt["decimal_sep"]
-
-    n = float(n)
-    idx = max(
-        0,
-        min(
-            len(suffixes) - 1,
-            int(math.floor(0 if n == 0 else math.log10(abs(n)) / 3)),
-        ),
-    )
-    value_str = f"{n / 10 ** (3 * idx):.2f}"
-    if decimal_sep != ".":
-        value_str = value_str.replace(".", decimal_sep)
-    return f"{value_str}{suffixes[idx]}"
-
-
-def _format_percent(value: float, lang: str = "en") -> str:
-    """Format a percent value with localized decimal separator and spacing.
-
-    Includes the sign (``+``/``-``) and the ``%`` symbol. French uses ","
-    as decimal separator and a space before ``%``.
-    """
-    fmt = get_translations(lang)["number_format"]
-    s = f"{value:+.2f}"
-    if fmt["decimal_sep"] != ".":
-        s = s.replace(".", fmt["decimal_sep"])
-    return fmt["percent_template"].format(value=s)
 
 
 # ------------------------------------------------------------------
