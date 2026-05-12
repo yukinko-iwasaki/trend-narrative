@@ -12,9 +12,14 @@ STRINGS: dict[str, object] = {
         "suffixes": ["", " K", " M", " B", " T"],
     },
 
+    # Suffix appended to unknown time_unit values when count > 1
+    # (e.g. "fortnight" → "fortnights"). Empty for languages without a
+    # one-size-fits-all plural rule.
+    "time_unit_fallback_plural_suffix": "s",
+
     # Time unit singular/plural forms, keyed by the `time_unit` arg passed
-    # to relationship narrative APIs. Unknown keys fall back to the raw
-    # string + naive English "s" suffix.
+    # to relationship narrative APIs. Unknown keys fall back to using
+    # ``time_unit_fallback_plural_suffix`` above.
     "time_units": {
         "year": ("year", "years"),
         "month": ("month", "months"),

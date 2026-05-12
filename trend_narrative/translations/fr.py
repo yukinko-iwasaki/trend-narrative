@@ -26,9 +26,14 @@ STRINGS: dict[str, object] = {
         "suffixes": ["", " k", " M", " Md", " Bn"],
     },
 
+    # French has no one-size-fits-all plural rule (mois→mois, jour→jours,
+    # œil→yeux, …), so unknown units are passed through unchanged rather
+    # than guessed at — see _resolve_time_unit.
+    "time_unit_fallback_plural_suffix": "",
+
     # Time unit singular/plural forms, keyed by the English `time_unit` arg
-    # passed to relationship narrative APIs. Unknown keys fall back to the
-    # raw string unchanged.
+    # passed to relationship narrative APIs. Unknown keys are returned
+    # unchanged (see ``time_unit_fallback_plural_suffix`` above).
     "time_units": {
         "year": ("année", "années"),
         "month": ("mois", "mois"),

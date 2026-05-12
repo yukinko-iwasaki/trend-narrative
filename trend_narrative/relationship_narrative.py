@@ -40,14 +40,20 @@ def _resolve_time_unit(t: dict, time_unit: str, count: int) -> str:
 
     Looks up ``time_unit`` in the catalog's ``time_units`` table (e.g.
     ``"year" -> ("year", "years")`` or ``("année", "années")``) and returns
-    the form matching ``count``. Falls back to naive English pluralization
-    (append ``"s"``) for unknown keys so custom units still work, at the
-    cost of correct localization.
+    the form matching ``count``. For unknown keys, appends the catalog's
+    ``time_unit_fallback_plural_suffix`` when ``count > 1`` — English uses
+    ``"s"`` (so ``"fortnight" → "fortnights"``); French uses ``""`` (passes
+    through unchanged, since French has no general plural rule). This avoids
+    silently producing wrong-language plurals like ``"fortnights"`` inside
+    French prose.
     """
     units = t.get("time_units", {})
     entry = units.get(time_unit)
     if entry is None:
-        return time_unit if count == 1 else f"{time_unit}s"
+        if count == 1:
+            return time_unit
+        suffix = t.get("time_unit_fallback_plural_suffix", "")
+        return f"{time_unit}{suffix}"
     singular, plural = entry
     return singular if count == 1 else plural
 

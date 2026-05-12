@@ -25,6 +25,7 @@ from trend_narrative.relationship_analysis import (
 )
 from trend_narrative.relationship_narrative import (
     _genitive,
+    _resolve_time_unit,
     _time_unit_comparison,
     get_relationship_narrative,
 )
@@ -151,6 +152,27 @@ class TestGenitive:
     ])
     def test_genitive(self, lang, name, expected):
         assert _genitive(lang, name) == expected
+
+
+class TestResolveTimeUnit:
+    """Known time_unit keys come from the catalog; unknown keys use the
+    catalog's fallback suffix — never a hardcoded English ``s``."""
+
+    @pytest.mark.parametrize("lang, unit, count, expected", [
+        # Catalogued units: catalog wins.
+        ("en", "year", 1, "year"),
+        ("en", "year", 5, "years"),
+        ("fr", "year", 1, "année"),
+        ("fr", "year", 5, "années"),
+        # Unknown units: English appends "s", French passes through.
+        # This prevents "fortnights" appearing inside French prose.
+        ("en", "fortnight", 1, "fortnight"),
+        ("en", "fortnight", 5, "fortnights"),
+        ("fr", "quinzaine", 1, "quinzaine"),
+        ("fr", "quinzaine", 5, "quinzaine"),
+    ])
+    def test_resolve(self, lang, unit, count, expected):
+        assert _resolve_time_unit(get_translations(lang), unit, count) == expected
 
 
 class TestTimeUnitComparison:
