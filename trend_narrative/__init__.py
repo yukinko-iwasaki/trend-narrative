@@ -2,7 +2,7 @@
 trend_narrative
 ~~~~~~~~~~~~~~~
 A standalone Python package for piecewise-linear trend detection and
-plain-English narrative generation.
+narrative generation.
 
 Two calling paths are supported:
 

@@ -1,10 +1,10 @@
 """
 trend_narrative.relationship_narrative
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Generate human-readable narratives from relationship analysis results.
+Generate narratives from relationship analysis results.
 
 This module handles the text generation layer, converting structured
-analysis outputs into plain-language descriptions.
+analysis outputs into descriptive text.
 """
 
 from __future__ import annotations

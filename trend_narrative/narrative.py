@@ -105,7 +105,7 @@ def get_segment_narrative(
     n_points: Optional[int] = None,
     lang: str = "en",
 ) -> str:
-    """Generate a plain-language narrative from trend data.
+    """Generate a narrative from trend data.
 
     Supports two calling paths:
 
