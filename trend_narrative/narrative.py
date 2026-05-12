@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Optional
 
 from .translations import (
     MetricLike,
-    _grammar_to_icu,
     _unpack_metric,
     get_translations,
     icu_format,
@@ -259,8 +258,7 @@ def _build_narrative(
     """Core narrative logic shared by both calling paths."""
     t = get_translations(lang)
     segments = consolidate_segments(segments)
-    metric, grammar = _unpack_metric(metric)
-    icu_kw = _grammar_to_icu(grammar)
+    metric, icu_kw = _unpack_metric(metric)
 
     # --- No detectable trend: fall back to volatility description ---
     if len(segments) == 0:

@@ -63,20 +63,23 @@ def _strong_signal_series(n=20, seed=42):
 
 
 class TestUnpackMetric:
-    @pytest.mark.parametrize("metric, name, grammar", [
+    """``_unpack_metric`` returns ICU-ready kwargs directly — the
+    user-facing ``plural``/``feminine`` booleans become ``number``/``gender``."""
+
+    @pytest.mark.parametrize("metric, name, icu_kwargs", [
         ("real expenditure", "real expenditure",
-         {"plural": False, "feminine": False}),
+         {"number": "singular", "gender": "masculine"}),
         ({"name": "les dépenses", "plural": True, "feminine": True},
-         "les dépenses", {"plural": True, "feminine": True}),
+         "les dépenses", {"number": "plural", "gender": "feminine"}),
         ({"name": "les prix", "plural": True},
-         "les prix", {"plural": True, "feminine": False}),
+         "les prix", {"number": "plural", "gender": "masculine"}),
         ({"name": "spending"}, "spending",
-         {"plural": False, "feminine": False}),
+         {"number": "singular", "gender": "masculine"}),
         ({"name": "x", "plural": True, "extra": "ignored"},
-         "x", {"plural": True, "feminine": False}),
+         "x", {"number": "plural", "gender": "masculine"}),
     ])
-    def test_unpack(self, metric, name, grammar):
-        assert _unpack_metric(metric) == (name, grammar)
+    def test_unpack(self, metric, name, icu_kwargs):
+        assert _unpack_metric(metric) == (name, icu_kwargs)
 
     def test_dict_missing_name_raises(self):
         with pytest.raises(TypeError, match="must include a 'name' key"):

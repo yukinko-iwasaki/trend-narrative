@@ -16,7 +16,7 @@ language will appear in ``SUPPORTED_LANGUAGES``.
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Union
 
 from . import en, fr
 
@@ -81,13 +81,15 @@ _assert_catalog_parity()
 #    (needed for French plural/gender agreement, ignored otherwise):
 #        metric={"name": "les dépenses", "plural": True, "feminine": True}
 #
-# ``_unpack_metric`` normalizes both forms to a (name, grammar) pair so the
-# internal narrative builders can work with a single representation.
+# ``_unpack_metric`` normalizes both forms to ``(name, icu_kwargs)`` where
+# icu_kwargs is ready to splat directly into ``icu_format(**kwargs)`` — the
+# user-facing "plural"/"feminine" booleans are translated to ICU's
+# "number"/"gender" select keys in one step.
 # ---------------------------------------------------------------------------
 
 
-def _unpack_metric(metric: object) -> tuple[str, dict[str, bool]]:
-    """Normalize *metric* to ``(display_name, grammar_dict)``.
+def _unpack_metric(metric: object) -> tuple[str, dict[str, str]]:
+    """Normalize *metric* to ``(display_name, icu_kwargs)``.
 
     Parameters
     ----------
@@ -98,10 +100,11 @@ def _unpack_metric(metric: object) -> tuple[str, dict[str, bool]]:
 
     Returns
     -------
-    (name, grammar) : tuple[str, dict]
+    (name, icu_kwargs) : tuple[str, dict]
         ``name`` — the string to interpolate into narratives.
-        ``grammar`` — ``{"plural": bool, "feminine": bool}`` with
-        ``False`` defaults.
+        ``icu_kwargs`` — ``{"number": "singular"|"plural",
+        "gender": "masculine"|"feminine"}`` ready to splat into
+        :func:`icu_format`. Plain strings yield singular/masculine defaults.
 
     Raises
     ------
@@ -110,7 +113,7 @@ def _unpack_metric(metric: object) -> tuple[str, dict[str, bool]]:
         a ``name`` key.
     """
     if isinstance(metric, str):
-        return metric, {"plural": False, "feminine": False}
+        return metric, {"number": "singular", "gender": "masculine"}
     if isinstance(metric, dict):
         if "name" not in metric:
             raise TypeError(
@@ -118,26 +121,12 @@ def _unpack_metric(metric: object) -> tuple[str, dict[str, bool]]:
                 f"{sorted(metric.keys())}"
             )
         return str(metric["name"]), {
-            "plural": bool(metric.get("plural", False)),
-            "feminine": bool(metric.get("feminine", False)),
+            "number": "plural" if metric.get("plural") else "singular",
+            "gender": "feminine" if metric.get("feminine") else "masculine",
         }
     raise TypeError(
         f"metric must be a str or dict, got {type(metric).__name__}"
     )
-
-
-def _grammar_to_icu(grammar: Optional[dict[str, bool]] = None) -> dict[str, str]:
-    """Convert an ``_unpack_metric`` grammar dict to ICU select keyword values.
-
-    ``{"plural": True, "feminine": False}`` becomes
-    ``{"number": "plural", "gender": "masculine"}`` — ready to splat into
-    ``icu_format(**kwargs)``.
-    """
-    g = grammar or {}
-    return {
-        "number": "plural" if g.get("plural") else "singular",
-        "gender": "feminine" if g.get("feminine") else "masculine",
-    }
 
 
 def _parse_select(template: str, pos: int, kwargs: dict) -> tuple[str, int]:

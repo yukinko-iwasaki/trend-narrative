@@ -20,7 +20,6 @@ from .relationship_analysis import (
 )
 from .translations import (
     MetricLike,
-    _grammar_to_icu,
     _unpack_metric,
     get_translations,
     icu_format,
@@ -119,6 +118,9 @@ def _time_unit_comparison(lang: str, time_unit_sg: str) -> str:
     return f"{time_unit_sg}-over-{time_unit_sg}"
 
 
+_DEFAULT_ICU = {"number": "singular", "gender": "masculine"}
+
+
 def _build_comovement_narrative(
     segment_details: list[dict],
     reference_name: str,
@@ -126,11 +128,13 @@ def _build_comovement_narrative(
     reference_format: Formatter = ".2f",
     comparison_format: Formatter = ".2f",
     lang: str = "en",
-    reference_grammar: Optional[dict] = None,
-    comparison_grammar: Optional[dict] = None,
+    reference_icu: Optional[dict[str, str]] = None,
+    comparison_icu: Optional[dict[str, str]] = None,
 ) -> str:
     """Build narrative from segment-level co-movement analysis."""
     t = get_translations(lang)
+    reference_icu = reference_icu or _DEFAULT_ICU
+    comparison_icu = comparison_icu or _DEFAULT_ICU
 
     if not segment_details:
         return t["unable_to_analyze"].format(x=reference_name, y=comparison_name)
@@ -165,8 +169,7 @@ def _build_comovement_narrative(
         if ref_start == ref_end:
             ref_dir_key = "remained_stable"
 
-        ref_icu = _grammar_to_icu(reference_grammar)
-        ref_dir = icu_format(t[ref_dir_key], **ref_icu)
+        ref_dir = icu_format(t[ref_dir_key], **reference_icu)
 
         if comp_dir_key is None:
             if comp_n == 1:
@@ -179,8 +182,7 @@ def _build_comovement_narrative(
                 )
             else:
                 comp_start = _format_value(seg["comparison_start"], comparison_format)
-                comp_icu = _grammar_to_icu(comparison_grammar)
-                stable_tpl = icu_format(t["stable_comparison"], **comp_icu)
+                stable_tpl = icu_format(t["stable_comparison"], **comparison_icu)
                 seg_narrative = stable_tpl.format(
                     period=period, ref_name=reference_name, ref_dir=ref_dir,
                     ref_start=ref_start, ref_end=ref_end,
@@ -202,8 +204,7 @@ def _build_comovement_narrative(
             else:
                 relationship = t["opposite_directions"]
 
-            comp_icu = _grammar_to_icu(comparison_grammar)
-            comp_dir = icu_format(t[comp_dir_key], **comp_icu)
+            comp_dir = icu_format(t[comp_dir_key], **comparison_icu)
 
             if relationship:
                 seg_narrative = t["comovement_with_rel"].format(
@@ -247,8 +248,8 @@ def _build_lagged_correlation_narrative(
     time_unit: str = "year",
     reference_leads: bool = True,
     lang: str = "en",
-    leader_grammar: Optional[dict[str, bool]] = None,
-    follower_grammar: Optional[dict[str, bool]] = None,
+    leader_icu: Optional[dict[str, str]] = None,
+    follower_icu: Optional[dict[str, str]] = None,
 ) -> str:
     """Build narrative from lagged correlation analysis.
 
@@ -256,6 +257,8 @@ def _build_lagged_correlation_narrative(
     When reference_leads=False: "When comparison increases, reference follows"
     """
     t = get_translations(lang)
+    leader_icu = leader_icu or _DEFAULT_ICU
+    follower_icu = follower_icu or _DEFAULT_ICU
 
     correlation = best_lag["correlation"]
     p_value = best_lag["p_value"]
@@ -321,8 +324,6 @@ def _build_lagged_correlation_narrative(
         # (agreeing with the leader) and "{follower} tend/tendent"
         # (agreeing with the follower). Each uses its own number select.
         direction_word = t["increase"] if correlation > 0 else t["decrease"]
-        leader_icu = _grammar_to_icu(leader_grammar)
-        follower_icu = _grammar_to_icu(follower_grammar)
         sig_tpl = icu_format(
             t["significant_finding"],
             leader_number=leader_icu["number"],
@@ -461,8 +462,9 @@ def get_relationship_narrative(
 
     # Unpack metric names — each may be a plain string or a dict bundling
     # the display name with grammatical properties (plural/feminine).
-    reference_name, reference_grammar = _unpack_metric(reference_name)
-    comparison_name, comparison_grammar = _unpack_metric(comparison_name)
+    # _unpack_metric returns (name, icu_kwargs) ready for icu_format.
+    reference_name, reference_icu = _unpack_metric(reference_name)
+    comparison_name, comparison_icu = _unpack_metric(comparison_name)
 
     if insights is not None:
         analysis = insights
@@ -497,11 +499,9 @@ def get_relationship_narrative(
         # "{leader} augmente/augmentent" and "{follower} tend/tendent" —
         # each needing its own grammar for correct French agreement.
         if reference_leads:
-            leader_grammar = reference_grammar
-            follower_grammar = comparison_grammar
+            leader_icu, follower_icu = reference_icu, comparison_icu
         else:
-            leader_grammar = comparison_grammar
-            follower_grammar = reference_grammar
+            leader_icu, follower_icu = comparison_icu, reference_icu
         narrative = _build_lagged_correlation_narrative(
             analysis["best_lag"],
             analysis["all_lags"],
@@ -512,8 +512,8 @@ def get_relationship_narrative(
             time_unit,
             reference_leads=reference_leads,
             lang=lang,
-            leader_grammar=leader_grammar,
-            follower_grammar=follower_grammar,
+            leader_icu=leader_icu,
+            follower_icu=follower_icu,
         )
     else:
         narrative = _build_comovement_narrative(
@@ -523,8 +523,8 @@ def get_relationship_narrative(
             reference_format=reference_format,
             comparison_format=comparison_format,
             lang=lang,
-            reference_grammar=reference_grammar,
-            comparison_grammar=comparison_grammar,
+            reference_icu=reference_icu,
+            comparison_icu=comparison_icu,
         )
 
     return {
