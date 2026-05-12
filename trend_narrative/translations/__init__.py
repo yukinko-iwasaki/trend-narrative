@@ -311,3 +311,101 @@ def get_translations(lang: str = "en") -> dict[str, object]:
             f"Unsupported language '{lang}'. "
             f"Supported: {', '.join(SUPPORTED_LANGUAGES)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Language-specific text helpers
+#
+# These produce inflected/contracted forms that depend on the target
+# language: time-unit pluralization, "of X" (genitive), and "X-over-X"
+# comparison phrasing.
+# ---------------------------------------------------------------------------
+
+
+def _resolve_time_unit(t: dict, time_unit: str, count: int) -> str:
+    """Return the singular or plural form of ``time_unit`` in the target language.
+
+    Looks up ``time_unit`` in the catalog's ``time_units`` table (e.g.
+    ``"year" -> ("year", "years")`` or ``("année", "années")``) and returns
+    the form matching ``count``. For unknown keys, appends the catalog's
+    ``time_unit_fallback_plural_suffix`` when ``count > 1`` — English uses
+    ``"s"`` (so ``"fortnight" → "fortnights"``); French uses ``""`` (passes
+    through unchanged, since French has no general plural rule). This avoids
+    silently producing wrong-language plurals like ``"fortnights"`` inside
+    French prose.
+    """
+    units = t.get("time_units", {})
+    entry = units.get(time_unit)
+    if entry is None:
+        if count == 1:
+            return time_unit
+        suffix = t.get("time_unit_fallback_plural_suffix", "")
+        return f"{time_unit}{suffix}"
+    singular, plural = entry
+    return singular if count == 1 else plural
+
+
+_FRENCH_VOWELS = frozenset("aeiouyàâéèêëïîôùûüœæ")
+
+
+def _genitive_fr(name: str) -> str:
+    """French genitive: prefix *name* with the right form of "de".
+
+    Handles article contractions and vowel elision:
+
+    * ``de + le`` → ``du`` (e.g. "du taux")
+    * ``de + les`` → ``des`` (e.g. "des dépenses")
+    * ``de + la`` → ``de la`` (no contraction; feminine article stays)
+    * ``de + l'`` → ``de l'`` (no contraction)
+    * ``de`` + consonant-initial bare noun → ``de …``
+    * ``de`` + vowel-initial bare noun → ``d'…`` (elision)
+    """
+    if not name:
+        return name
+    # Articles with a trailing space come first (more specific prefixes)
+    if name.startswith("les "):
+        return "des " + name[4:]
+    if name.startswith("le "):
+        return "du " + name[3:]
+    if name.startswith(("la ", "l'")):
+        return "de " + name
+    first = name[0].lower()
+    if first in _FRENCH_VOWELS:
+        return "d'" + name
+    return "de " + name
+
+
+def _genitive(lang: str, name: str) -> str:
+    """Return the genitive ("of X") form of *name* in the given language.
+
+    The genitive role expresses attribution / origin ("of X", "X's").
+    Every language produces this differently:
+
+    * English: ``of {name}``
+    * French: ``de/du/des/d' {name}`` (article contraction + vowel elision)
+    * Italian: ``di/del/della/...`` (contraction like French; not yet implemented)
+    * Spanish: ``de/del`` (``de + el → del``; not yet implemented)
+
+    Add a new language by implementing ``_genitive_<lang>(name)`` and
+    dispatching here.  Unknown languages return *name* unchanged.
+    """
+    if not name:
+        return name
+    if lang == "fr":
+        return _genitive_fr(name)
+    if lang == "en":
+        return "of " + name
+    return name
+
+
+def _time_unit_comparison(lang: str, time_unit_sg: str) -> str:
+    """Build the 'year-over-year' / 'd'année en année' phrase.
+
+    Handles French elision: ``d'année en année`` (vowel) vs
+    ``de mois en mois`` (consonant).
+    """
+    if lang == "fr":
+        first_char = time_unit_sg[0].lower() if time_unit_sg else ""
+        prep = "d'" if first_char in _FRENCH_VOWELS else "de "
+        return f"{prep}{time_unit_sg} en {time_unit_sg}"
+    return f"{time_unit_sg}-over-{time_unit_sg}"

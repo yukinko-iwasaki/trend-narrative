@@ -128,7 +128,7 @@ STRINGS: dict[str, object] = {
 
     # relationship_narrative.py — lagged correlation
     "timing_same": "in the same {time_unit}",
-    "timing_lagged": "about {lag} {time_unit_pl} later",
+    "timing_lagged": "about {lag} {time_unit_form} later",
     "no_reliable_relationship": (
         "No reliable relationship was detected between changes in {x} "
         "and {y}. "
@@ -144,7 +144,7 @@ STRINGS: dict[str, object] = {
     ),
     "no_association_with_lag": (
         "Changes in one do not appear to be associated with changes in the other "
-        "at any lag tested (0-{max_lag} {time_unit_pl}), "
+        "at any lag tested (0-{max_lag} {time_unit_form}), "
         "based on {n_pairs} {time_unit_comparison} comparisons."
     ),
     "significant_finding": (

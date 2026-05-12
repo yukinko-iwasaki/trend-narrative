@@ -23,13 +23,15 @@ from trend_narrative.relationship_analysis import (
     get_correlation_strength,
     get_direction,
 )
-from trend_narrative.relationship_narrative import (
+from trend_narrative.relationship_narrative import get_relationship_narrative
+from trend_narrative.translations import (
     _genitive,
     _resolve_time_unit,
     _time_unit_comparison,
-    get_relationship_narrative,
+    _unpack_metric,
+    get_translations,
+    icu_format,
 )
-from trend_narrative.translations import _unpack_metric, get_translations, icu_format
 
 
 # ---------------------------------------------------------------------------

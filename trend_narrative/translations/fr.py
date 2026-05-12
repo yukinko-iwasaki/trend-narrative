@@ -172,7 +172,7 @@ STRINGS: dict[str, object] = {
         "feminine {au cours de la même {time_unit}} "
         "other {au cours du même {time_unit}}}"
     ),
-    "timing_lagged": "environ {lag} {time_unit_pl} plus tard",
+    "timing_lagged": "environ {lag} {time_unit_form} plus tard",
     "no_reliable_relationship": (
         "Aucune relation fiable n'a été détectée entre les variations {x_gen} "
         "et {y_gen}. "
@@ -188,7 +188,7 @@ STRINGS: dict[str, object] = {
     ),
     "no_association_with_lag": (
         "Les variations de l'un ne semblent pas être associées aux variations de l'autre "
-        "à tout décalage testé (0-{max_lag} {time_unit_pl}), "
+        "à tout décalage testé (0-{max_lag} {time_unit_form}), "
         "sur la base de {n_pairs} comparaisons {time_unit_comparison}."
     ),
     "significant_finding": (
