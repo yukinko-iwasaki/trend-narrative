@@ -22,11 +22,15 @@ Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
-from .translations import get_translations, icu_format, _unpack_metric
-
-MetricLike = Union[str, dict]
+from .translations import (
+    MetricLike,
+    _grammar_to_icu,
+    _unpack_metric,
+    get_translations,
+    icu_format,
+)
 
 if TYPE_CHECKING:
     from .extractor import InsightExtractor
@@ -244,15 +248,6 @@ def get_segment_narrative(
 # ------------------------------------------------------------------
 # Internal narrative builder (pure text logic, no data concerns)
 # ------------------------------------------------------------------
-
-
-def _grammar_to_icu(grammar: Optional[dict[str, bool]] = None) -> dict[str, str]:
-    """Convert a grammar dict to ICU select keyword values."""
-    g = grammar or {}
-    return {
-        "number": "plural" if g.get("plural") else "singular",
-        "gender": "feminine" if g.get("feminine") else "masculine",
-    }
 
 
 def _build_narrative(

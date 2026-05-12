@@ -16,7 +16,12 @@ language will appear in ``SUPPORTED_LANGUAGES``.
 
 from __future__ import annotations
 
+from typing import Optional, Union
+
 from . import en, fr
+
+# Public type alias: anything accepted by `_unpack_metric` as a metric name.
+MetricLike = Union[str, dict]
 
 # English is the reference catalog. Every other language MUST have exactly
 # the same set of keys — validated at import time (see _assert_catalog_parity
@@ -119,6 +124,20 @@ def _unpack_metric(metric: object) -> tuple[str, dict[str, bool]]:
     raise TypeError(
         f"metric must be a str or dict, got {type(metric).__name__}"
     )
+
+
+def _grammar_to_icu(grammar: Optional[dict[str, bool]] = None) -> dict[str, str]:
+    """Convert an ``_unpack_metric`` grammar dict to ICU select keyword values.
+
+    ``{"plural": True, "feminine": False}`` becomes
+    ``{"number": "plural", "gender": "masculine"}`` — ready to splat into
+    ``icu_format(**kwargs)``.
+    """
+    g = grammar or {}
+    return {
+        "number": "plural" if g.get("plural") else "singular",
+        "gender": "feminine" if g.get("feminine") else "masculine",
+    }
 
 
 def _parse_select(template: str, pos: int, kwargs: dict) -> tuple[str, int]:

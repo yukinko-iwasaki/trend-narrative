@@ -18,10 +18,15 @@ from .relationship_analysis import (
     DEFAULT_MAX_LAG_CAP,
     P_THRESHOLD,
 )
-from .translations import get_translations, icu_format, _unpack_metric
+from .translations import (
+    MetricLike,
+    _grammar_to_icu,
+    _unpack_metric,
+    get_translations,
+    icu_format,
+)
 
 Formatter = Union[str, Callable[[float], str]]
-MetricLike = Union[str, dict]
 
 
 def _format_value(value: float, fmt: Formatter) -> str:
@@ -99,15 +104,6 @@ def _genitive(lang: str, name: str) -> str:
     if lang == "en":
         return "of " + name
     return name
-
-
-def _grammar_to_icu(grammar: Optional[dict[str, bool]] = None) -> dict[str, str]:
-    """Convert a grammar dict to ICU select keyword values."""
-    g = grammar or {}
-    return {
-        "number": "plural" if g.get("plural") else "singular",
-        "gender": "feminine" if g.get("feminine") else "masculine",
-    }
 
 
 def _time_unit_comparison(lang: str, time_unit_sg: str) -> str:
@@ -500,7 +496,7 @@ def get_relationship_narrative(
         # The significant_finding template has two subject-verb pairs —
         # "{leader} augmente/augmentent" and "{follower} tend/tendent" —
         # each needing its own grammar for correct French agreement.
-        if reference_leads or reference_leads is None:
+        if reference_leads:
             leader_grammar = reference_grammar
             follower_grammar = comparison_grammar
         else:
