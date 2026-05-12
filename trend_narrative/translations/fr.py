@@ -17,6 +17,15 @@ with *être*)::
 """
 
 STRINGS: dict[str, object] = {
+    # Number formatting. French uses ',' as decimal separator and inserts
+    # a space before '%'. Suffix for 10^9 is "Md" (milliard), NOT "B" —
+    # "B" / "billion" in French refers to 10^12 (faux ami with English).
+    "number_format": {
+        "decimal_sep": ",",
+        "percent_template": "{value} %",
+        "suffixes": ["", " k", " M", " Md", " Bn"],
+    },
+
     # Time unit singular/plural forms, keyed by the English `time_unit` arg
     # passed to relationship narrative APIs. Unknown keys fall back to the
     # raw string unchanged.
@@ -80,10 +89,11 @@ STRINGS: dict[str, object] = {
     ),
 
     # narrative.py — single segment
+    # {pct_change} is pre-formatted (sign, decimals, %) by _format_percent.
     "single_segment": (
         "entre {start_year} et {end_year}, "
         "{metric} {direction} de {change} "
-        "({pct_change}%), maintenant une trajectoire constante."
+        "({pct_change}), maintenant une trajectoire constante."
     ),
 
     # narrative.py — multi-segment

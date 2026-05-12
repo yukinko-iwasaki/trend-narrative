@@ -3,6 +3,15 @@ English string catalog for narrative generation.
 """
 
 STRINGS: dict[str, object] = {
+    # Number formatting (decimal separator, percent rendering, magnitude
+    # suffixes for millify()). Suffixes are ordered by power of 1000:
+    # index 0 = unit, 1 = thousand, 2 = million, 3 = billion, 4 = trillion.
+    "number_format": {
+        "decimal_sep": ".",
+        "percent_template": "{value}%",
+        "suffixes": ["", " K", " M", " B", " T"],
+    },
+
     # Time unit singular/plural forms, keyed by the `time_unit` arg passed
     # to relationship narrative APIs. Unknown keys fall back to the raw
     # string + naive English "s" suffix.
@@ -44,10 +53,11 @@ STRINGS: dict[str, object] = {
     "vol_high": "{metric} exhibited significant volatility without a clear direction.",
 
     # narrative.py — single segment
+    # {pct_change} is pre-formatted (sign, decimals, %) by _format_percent.
     "single_segment": (
         "between {start_year} and {end_year}, "
         "the {metric} {direction} by {change} "
-        "({pct_change}%), maintaining a consistent trajectory."
+        "({pct_change}), maintaining a consistent trajectory."
     ),
 
     # narrative.py — multi-segment

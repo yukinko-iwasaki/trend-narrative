@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from trend_narrative import InsightExtractor, SUPPORTED_LANGUAGES
-from trend_narrative.narrative import get_segment_narrative
+from trend_narrative.narrative import get_segment_narrative, millify
+from trend_narrative.narrative import _format_percent
 from trend_narrative.relationship_narrative import get_relationship_narrative
 from trend_narrative.relationship_analysis import get_direction, get_correlation_strength
 from trend_narrative.translations import get_translations, icu_format
@@ -756,3 +757,95 @@ class TestRelationshipNarrativeDictMetrics:
             comparison_name="outcome",
         )
         assert "spending" in result["narrative"]
+
+
+# ---------------------------------------------------------------------------
+# Number formatting — millify and percent localization
+# ---------------------------------------------------------------------------
+
+class TestMillifyFrench:
+    """French millify must use ',' decimal separator and 'Md' for 10^9.
+
+    Critical: 'B' in French denotes 10^12, not 10^9 (English-French false
+    friend). Using 'B' for milliards would mislead francophone readers.
+    """
+
+    def test_thousands_french(self):
+        assert millify(1_500, lang="fr") == "1,50 k"
+
+    def test_millions_french(self):
+        assert millify(2_000_000, lang="fr") == "2,00 M"
+
+    def test_billions_french_uses_md(self):
+        """10^9 → 'Md' (milliard), never 'B' (which means 10^12 in French)."""
+        assert millify(3_000_000_000, lang="fr") == "3,00 Md"
+        assert "B" not in millify(3_000_000_000, lang="fr")
+
+    def test_small_number_french(self):
+        assert millify(750, lang="fr") == "750,00"
+
+    def test_zero_french(self):
+        assert millify(0, lang="fr") == "0,00"
+
+    def test_default_lang_unchanged(self):
+        """Backward compat: no lang arg keeps English behavior."""
+        assert millify(1_500_000) == "1.50 M"
+        assert millify(3_000_000_000) == "3.00 B"
+
+
+class TestFormatPercent:
+    def test_english_no_space(self):
+        assert _format_percent(250.0) == "+250.00%"
+        assert _format_percent(-50.0) == "-50.00%"
+
+    def test_french_uses_comma_and_space(self):
+        assert _format_percent(250.0, lang="fr") == "+250,00 %"
+        assert _format_percent(-50.0, lang="fr") == "-50,00 %"
+
+    def test_zero(self):
+        assert _format_percent(0.0) == "+0.00%"
+        assert _format_percent(0.0, lang="fr") == "+0,00 %"
+
+
+class TestSingleSegmentNumberLocalization:
+    """End-to-end: localized numbers should appear in the final narrative."""
+
+    def _segs(self, start_value, end_value):
+        return [{
+            "start_year": 2010.0, "end_year": 2020.0,
+            "start_value": float(start_value), "end_value": float(end_value),
+            "slope": (end_value - start_value) / 10, "p_value": 0.01,
+        }]
+
+    def test_french_narrative_uses_comma_decimal(self):
+        text = get_segment_narrative(
+            segments=self._segs(1_000_000, 3_500_000),
+            cv_value=8.0,
+            metric={"name": "les dépenses", "plural": True, "feminine": True},
+            lang="fr",
+        )
+        assert "2,50 M" in text
+        assert "2.50 M" not in text
+        assert "+250,00 %" in text
+        assert "+250.00%" not in text
+
+    def test_french_narrative_uses_md_for_billions(self):
+        text = get_segment_narrative(
+            segments=self._segs(1_000_000_000, 4_000_000_000),
+            cv_value=8.0,
+            metric={"name": "les dépenses", "plural": True, "feminine": True},
+            lang="fr",
+        )
+        assert " Md" in text
+        # 'B' (English billion) must not leak into French output as a
+        # magnitude suffix — French 'billion' = 10^12.
+        assert " B " not in text and " B)" not in text
+
+    def test_english_narrative_unchanged(self):
+        text = get_segment_narrative(
+            segments=self._segs(1_000_000, 3_500_000),
+            cv_value=8.0,
+            metric="spending",
+        )
+        assert "2.50 M" in text
+        assert "+250.00%" in text
