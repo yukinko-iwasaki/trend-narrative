@@ -133,10 +133,12 @@ STRINGS: dict[str, object] = {
         "No reliable relationship was detected between changes in {x} "
         "and {y}. "
     ),
+    # {corr} and {p_val} are pre-formatted strings (precision applied in
+    # Python so the decimal separator can be localized).
     "weak_pattern": (
         "While the data suggests a {strength} {sign} "
-        "pattern (r={corr:.2f}), this could be due to chance "
-        "given the limited sample size (n={n_pairs} change pairs, p={p_val:.2f})."
+        "pattern (r={corr}), this could be due to chance "
+        "given the limited sample size (n={n_pairs} change pairs, p={p_val})."
     ),
     "no_association": (
         "Changes in one do not appear to be associated with changes in the other, "
@@ -150,8 +152,8 @@ STRINGS: dict[str, object] = {
     "significant_finding": (
         "When {leader} increases, {follower} tends to "
         "{direction_word} {timing}. "
-        "This is a {strength} relationship (r={corr:.2f}) "
-        "and is statistically reliable (p={p_val:.3f}), "
+        "This is a {strength} relationship (r={corr}) "
+        "and is statistically reliable (p={p_val}), "
         "based on {n_pairs} {time_unit_comparison} comparisons."
     ),
 

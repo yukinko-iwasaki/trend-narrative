@@ -179,8 +179,8 @@ STRINGS: dict[str, object] = {
     ),
     "weak_pattern": (
         "Bien que les données suggèrent une tendance {sign} {strength} "
-        "(r={corr:.2f}), cela pourrait être dû au hasard "
-        "compte tenu de la taille limitée de l'échantillon (n={n_pairs} paires, p={p_val:.2f})."
+        "(r={corr}), cela pourrait être dû au hasard "
+        "compte tenu de la taille limitée de l'échantillon (n={n_pairs} paires, p={p_val})."
     ),
     "no_association": (
         "Les variations de l'un ne semblent pas être associées aux variations de l'autre, "
@@ -197,8 +197,8 @@ STRINGS: dict[str, object] = {
         "{follower} "
         "{follower_number, select, singular {tend} other {tendent}} à "
         "{direction_word} {timing}. "
-        "Il s'agit d'une relation {strength} (r={corr:.2f}) "
-        "et statistiquement fiable (p={p_val:.3f}), "
+        "Il s'agit d'une relation {strength} (r={corr}) "
+        "et statistiquement fiable (p={p_val}), "
         "sur la base de {n_pairs} comparaisons {time_unit_comparison}."
     ),
 

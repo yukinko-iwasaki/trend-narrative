@@ -238,7 +238,9 @@ def _build_lagged_correlation_narrative(
             sign = t["positive"] if correlation > 0 else t["negative"]
             narrative += t["weak_pattern"].format(
                 strength=strength, sign=sign,
-                corr=correlation, n_pairs=n_pairs, p_val=p_value,
+                corr=_format_value(correlation, ".2f", lang=lang),
+                n_pairs=n_pairs,
+                p_val=_format_value(p_value, ".2f", lang=lang),
             )
         elif max_lag_tested == 0:
             narrative += t["no_association"].format(
@@ -265,7 +267,9 @@ def _build_lagged_correlation_narrative(
         narrative = sig_tpl.format(
             leader=leader_name, follower=follower_name,
             direction_word=direction_word, timing=timing,
-            strength=strength, corr=correlation, p_val=p_value,
+            strength=strength,
+            corr=_format_value(correlation, ".2f", lang=lang),
+            p_val=_format_value(p_value, ".3f", lang=lang),
             n_pairs=n_pairs, time_unit_comparison=tu_comparison,
         )
 

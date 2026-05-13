@@ -470,6 +470,30 @@ class TestRelationshipNarrativeIntegration:
         assert ". Avec des données limitées" in result["narrative"]
         assert ".Avec" not in result["narrative"]
 
+    def test_statistical_values_localized_french(self):
+        """Regression: r and p values must use ',' decimal in French.
+
+        These come from {corr} / {p_val} placeholders in weak_pattern and
+        significant_finding. Previously they used Python format specs like
+        {corr:.2f} inside the template, bypassing the catalog's decimal_sep.
+        """
+        years, ref, comp = _strong_signal_series(n=20)
+        result = get_relationship_narrative(
+            reference_years=years, reference_values=ref,
+            comparison_years=years, comparison_values=comp,
+            reference_name={"name": "les dépenses", "plural": True, "feminine": True},
+            comparison_name={"name": "le budget", "plural": False, "feminine": False},
+            lang="fr", max_lag_cap=0,
+        )
+        narrative = result["narrative"]
+        # Comma-decimal forms must appear
+        assert "r=0," in narrative
+        assert "p=0," in narrative
+        # English period-decimal must NOT leak in statistical values
+        assert "r=0." not in narrative
+        assert "p=0." not in narrative
+
+
     def test_timing_same_gender_agreement_french(self):
         """time_unit='year' is feminine → 'la même année', not 'du même année'."""
         years, ref, comp = _strong_signal_series(n=15)
@@ -483,3 +507,83 @@ class TestRelationshipNarrativeIntegration:
         if "même" in narrative:
             assert "la même année" in narrative
             assert "du même" not in narrative
+
+
+class TestPrecomputedInsightsPaths:
+    """Templates only reachable via precomputed insights, plus rare paths
+    that are hard to construct from natural data (single_observation,
+    unable_to_analyze, continuing)."""
+
+    REF_FR = {"name": "les dépenses", "plural": True, "feminine": True}
+    COMP_FR = {"name": "le budget", "plural": False, "feminine": False}
+
+    def _comovement_insights(self, segment_details):
+        return {
+            "method": "comovement", "n_points": 3,
+            "segment_details": segment_details,
+            "best_lag": None, "all_lags": None, "max_lag_tested": None,
+            "reference_leads": True,
+        }
+
+    def test_single_observation_french(self):
+        """Fires when comp_n == 1 and comparison_direction is None
+        (interpolation failed at both boundaries, fell back to the same
+        single observation)."""
+        insights = self._comovement_insights([{
+            "start_year": 2010, "end_year": 2020,
+            "reference_direction": "increased",
+            "reference_start": 100.0, "reference_end": 150.0,
+            "comparison_n_points": 1,
+            "comparison_direction": None,
+            "comparison_start": 50.0, "comparison_end": 50.0,
+            "interpolated": False,
+        }])
+        en = get_relationship_narrative(
+            insights=insights, reference_name="spending", comparison_name="outcome",
+        )
+        fr = get_relationship_narrative(
+            insights=insights, reference_name=self.REF_FR, comparison_name=self.COMP_FR,
+            lang="fr",
+        )
+        assert "only one outcome observation" in en["narrative"]
+        # French uses genitive contraction: "observation du budget" not "de le budget"
+        assert "observation du budget" in fr["narrative"]
+        assert "de le " not in fr["narrative"]
+
+    def test_unable_to_analyze_via_empty_segments(self):
+        """Fires when method='comovement' but segment_details is empty.
+        Only reachable through the precomputed-insights path, since
+        analyze_relationship enforces non-empty segments for comovement."""
+        insights = self._comovement_insights([])
+        en = get_relationship_narrative(
+            insights=insights, reference_name="spending", comparison_name="outcome",
+        )
+        fr = get_relationship_narrative(
+            insights=insights, reference_name=self.REF_FR, comparison_name=self.COMP_FR,
+            lang="fr",
+        )
+        assert "Unable to analyze" in en["narrative"]
+        assert "Impossible d'analyser" in fr["narrative"]
+
+    def test_continuing_template_via_zero_slope_segment(self):
+        """Fires when a slope=0 segment is followed by a directional one.
+        consolidate_segments does NOT merge slope=0 with slope<0 (since the
+        same_direction check fails both clauses), so they survive into the
+        narrative loop and hit the "continuing" branch."""
+        from trend_narrative.narrative import _build_narrative
+        segs = [
+            {"start_year": 2010.0, "end_year": 2015.0,
+             "start_value": 100.0, "end_value": 100.0,
+             "slope": 0.0, "p_value": 0.01},
+            {"start_year": 2015.0, "end_year": 2020.0,
+             "start_value": 100.0, "end_value": 50.0,
+             "slope": -10.0, "p_value": 0.01},
+        ]
+        en = _build_narrative(segs, cv_value=10.0, metric="spending", lang="en")
+        fr = _build_narrative(
+            segs, cv_value=10.0,
+            metric={"name": "les dépenses", "plural": True, "feminine": True},
+            lang="fr",
+        )
+        assert "continuing its" in en
+        assert "poursuivant sa trajectoire" in fr
