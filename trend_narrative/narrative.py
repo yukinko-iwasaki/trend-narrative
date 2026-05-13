@@ -21,8 +21,16 @@ Ported from dime-worldbank/rpf-country-dash components/narrative_generator.py
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Optional
+
+from .translations import (
+    MetricLike,
+    _format_percent,
+    _unpack_metric,
+    get_translations,
+    icu_format,
+    millify,
+)
 
 if TYPE_CHECKING:
     from .extractor import InsightExtractor
@@ -33,40 +41,6 @@ if TYPE_CHECKING:
 
 CV_LOW_THRESHOLD = 5
 CV_MODERATE_THRESHOLD = 15
-
-_MILLNAMES = ["", " K", " M", " B", " T"]
-
-_TRANSITION_PREFIXES = [
-    "Trend then shifted,",
-    "This trajectory pivoted again,",
-    "Then,",
-]
-
-
-# ------------------------------------------------------------------
-# Formatting helpers
-# ------------------------------------------------------------------
-
-
-def millify(n: float) -> str:
-    """Format a large number into a human-readable string with suffix.
-
-    Examples
-    --------
-    >>> millify(1_500_000)
-    '1.50 M'
-    >>> millify(750)
-    '750.00'
-    """
-    n = float(n)
-    idx = max(
-        0,
-        min(
-            len(_MILLNAMES) - 1,
-            int(math.floor(0 if n == 0 else math.log10(abs(n)) / 3)),
-        ),
-    )
-    return f"{n / 10 ** (3 * idx):.2f}{_MILLNAMES[idx]}"
 
 
 # ------------------------------------------------------------------
@@ -126,11 +100,12 @@ def consolidate_segments(segments: list[dict]) -> list[dict]:
 def get_segment_narrative(
     segments: Optional[list[dict]] = None,
     cv_value: Optional[float] = None,
-    metric: str = "expenditure",
+    metric: MetricLike = "expenditure",
     extractor: Optional["InsightExtractor"] = None,
     n_points: Optional[int] = None,
+    lang: str = "en",
 ) -> str:
-    """Generate a plain-English narrative from trend data.
+    """Generate a narrative from trend data.
 
     Supports two calling paths:
 
@@ -166,15 +141,26 @@ def get_segment_narrative(
         ``slope``.
     cv_value : float, optional
         Precomputed Coefficient of Variation % (Path 1).
-    metric : str
+    metric : str or dict
         Human-readable metric label used in the generated text
-        (default ``"expenditure"``).
+        (default ``"expenditure"``). May be either:
+
+        * a plain string (e.g. ``"real expenditure"``), or
+        * a dict bundling the display name with grammatical properties
+          used for French inflection (ignored for English)::
+
+              {"name": "les dépenses", "plural": True, "feminine": True}
+
+        The ``plural`` / ``feminine`` keys default to ``False``.
     extractor : InsightExtractor, optional
         A configured :class:`InsightExtractor` instance (Path 2).
         ``extract_full_suite()`` is called internally.
     n_points : int, optional
         Number of data points (Path 1). If fewer than 2, returns empty
         string. Automatically inferred when using extractor path.
+    lang : str
+        Language code for the generated narrative (default ``"en"``).
+        Supported: ``"en"``, ``"fr"``.
 
     Returns
     -------
@@ -204,7 +190,7 @@ def get_segment_narrative(
     if n_points is not None and n_points < 2:
         return ""
 
-    return _build_narrative(segments, cv_value, metric)
+    return _build_narrative(segments, cv_value, metric, lang=lang)
 
 
 # ------------------------------------------------------------------
@@ -215,59 +201,68 @@ def get_segment_narrative(
 def _build_narrative(
     segments: list[dict],
     cv_value: float,
-    metric: str,
+    metric: MetricLike,
+    lang: str = "en",
 ) -> str:
     """Core narrative logic shared by both calling paths."""
+    t = get_translations(lang)
     segments = consolidate_segments(segments)
+    metric, icu_kw = _unpack_metric(metric)
 
     # --- No detectable trend: fall back to volatility description ---
     if len(segments) == 0:
         if cv_value < CV_LOW_THRESHOLD:
-            return f"{metric} remained highly stable and range-bound."
+            return icu_format(t["vol_low"], **icu_kw).format(metric=metric)
         elif cv_value <= CV_MODERATE_THRESHOLD:
-            return f"{metric} showed moderate fluctuations around a consistent mean."
+            return icu_format(t["vol_moderate"], **icu_kw).format(metric=metric)
         else:
-            return f"{metric} exhibited significant volatility without a clear direction."
+            return icu_format(t["vol_high"], **icu_kw).format(metric=metric)
 
     # --- Single monotone trend ---
     if len(segments) == 1:
         seg = segments[0]
         total_change = seg["end_value"] - seg["start_value"]
         pct_change = (total_change / seg["start_value"]) * 100 if seg["start_value"] != 0 else 0.0
-        direction = "increased" if total_change > 0 else "decreased"
-        return (
-            f"between {int(seg['start_year'])} and {int(seg['end_year'])}, "
-            f"the {metric} {direction} by {millify(abs(total_change))} "
-            f"({pct_change:+.2f}%), maintaining a consistent trajectory."
+        dir_key = "increased" if total_change > 0 else "decreased"
+        direction = icu_format(t[dir_key], **icu_kw)
+        return t["single_segment"].format(
+            start_year=int(seg["start_year"]),
+            end_year=int(seg["end_year"]),
+            metric=metric,
+            direction=direction,
+            change=millify(abs(total_change), lang=lang),
+            pct_change=_format_percent(pct_change, lang=lang),
         )
 
     # --- Multi-segment narrative ---
     narrative: list[str] = []
+    transition_prefixes = t["transition_prefixes"]
     for i, seg in enumerate(segments):
-        direction = "an upward" if seg["slope"] > 0 else "a downward"
+        is_upward = seg["slope"] > 0
+        trend_phrase = t["trend_upward"] if is_upward else t["trend_downward"]
+        path_phrase = t["path_upward"] if is_upward else t["path_downward"]
 
         if i == 0:
+            first_seg_tpl = icu_format(t["first_segment"], **icu_kw)
             narrative.append(
-                f"From {int(seg['start_year'])} to {int(seg['end_year'])}, "
-                f"the {metric} showed {direction} trend."
+                first_seg_tpl.format(
+                    start_year=int(seg["start_year"]),
+                    end_year=int(seg["end_year"]),
+                    metric=metric,
+                    trend_phrase=trend_phrase,
+                )
             )
         else:
             prev_slope = segments[i - 1]["slope"]
-            prefix = _TRANSITION_PREFIXES[min(i - 1, len(_TRANSITION_PREFIXES) - 1)]
+            prefix = transition_prefixes[min(i - 1, len(transition_prefixes) - 1)]
 
             if prev_slope > 0 and seg["slope"] < 0:
-                transition = (
-                    f"reaching a peak in {int(seg['start_year'])} "
-                    f"before reversing into a decline."
-                )
+                transition = t["peak_reversal"].format(year=int(seg["start_year"]))
             elif prev_slope < 0 and seg["slope"] > 0:
-                transition = (
-                    f"hitting a low in {int(seg['start_year'])} "
-                    f"followed by a recovery."
-                )
+                transition = t["low_recovery"].format(year=int(seg["start_year"]))
             else:
-                transition = (
-                    f"continuing its {direction} path through {int(seg['end_year'])}."
+                transition = t["continuing"].format(
+                    path_phrase=path_phrase, year=int(seg["end_year"])
                 )
 
             narrative.append(f"{prefix} {transition}")

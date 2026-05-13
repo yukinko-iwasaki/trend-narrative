@@ -6,9 +6,11 @@
 
 ## Overview
 
-The **trend-narrative** package is a standalone Python library that combines **piecewise-linear trend detection**, **relationship analysis**, and **plain-English narrative generation** for time-series data.
+The **trend-narrative** package is a standalone Python library that combines **piecewise-linear trend detection**, **relationship analysis**, and **multilingual narrative generation** for time-series data.
 
-Given a time series — such as annual health spending or GDP figures — this package automatically identifies meaningful trends (e.g., "rising from 2010 to 2015, then declining") and produces a ready-to-use English sentence describing them. It can also compare two time series and explain how they move together or apart over time.
+Given a time series — such as annual health spending or GDP figures — this package automatically identifies meaningful trends (e.g., "rising from 2010 to 2015, then declining") and produces a ready-to-use sentence describing them. It can also compare two time series and explain how they move together or apart over time.
+
+Narratives can be generated in **English** and **French**, with an extensible architecture for adding more languages.
 
 This is useful for analysts, researchers, and developers who need to turn numeric data into human-readable summaries without writing custom text logic each time.
 
@@ -46,7 +48,7 @@ import numpy as np
 from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
 
 x = np.arange(2010, 2022, dtype=float)
-y = np.array([100, 105, 112, 108, 115, 130, 125, 120, 118, 122, 135, 148], dtype=float)
+y = np.array([100, 110, 120, 130, 140, 150, 140, 130, 120, 110, 100, 90], dtype=float)
 
 extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
 narrative = get_segment_narrative(extractor=extractor, metric="health spending")
@@ -72,7 +74,7 @@ import numpy as np
 from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
 
 x = np.arange(2010, 2022, dtype=float)
-y = np.array([100, 105, 112, 108, 115, 130, 125, 120, 118, 122, 135, 148], dtype=float)
+y = np.array([100, 110, 120, 130, 140, 150, 140, 130, 120, 110, 100, 90], dtype=float)
 
 extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
 narrative = get_segment_narrative(extractor=extractor, metric="health spending")
@@ -99,6 +101,62 @@ narrative = get_segment_narrative(
     metric="health spending",
 )
 ```
+
+### Multilingual Support
+
+All narrative functions accept a `lang` parameter. The default is `"en"` (English), so existing code works unchanged.
+
+```python
+# English — plain strings work for any metric
+narrative = get_segment_narrative(extractor=extractor, metric="health spending")
+
+# French — see "Grammatical agreement" below for non-trivial metrics
+narrative = get_segment_narrative(
+    extractor=extractor,
+    metric={"name": "les dépenses de santé", "plural": True, "feminine": True},
+    lang="fr",
+)
+# → "De 2010 à 2015, les dépenses de santé ont affiché une tendance à la hausse.
+#    La tendance s'est ensuite inversée, atteignant un pic en 2015 avant de s'inverser en déclin."
+```
+
+Currently supported: `"en"` (English), `"fr"` (French).
+
+#### Grammatical agreement (French)
+
+French verbs and adjectives must agree with the metric's grammatical **number** (singular/plural) and **gender** (masculine/feminine). When the metric isn't singular masculine, pass it as a dict:
+
+```python
+{"name": "les dépenses",   "plural": True,  "feminine": True}   # plural feminine
+{"name": "les taux",       "plural": True,  "feminine": False}  # plural masculine
+{"name": "la production",  "plural": False, "feminine": True}   # singular feminine
+{"name": "le taux",        "plural": False, "feminine": False}  # singular masculine
+```
+
+The `plural` / `feminine` keys default to `False`. A plain string (e.g. `metric="les dépenses"`) is accepted, but defaults to singular masculine — silently producing wrong agreement like `dépenses **a augmenté**` instead of `dépenses **ont augmenté**`. **The dict form is strongly recommended for any French metric that isn't singular masculine.**
+
+The same applies to `reference_name` and `comparison_name` in `get_relationship_narrative`:
+
+```python
+import numpy as np
+from trend_narrative import get_relationship_narrative
+
+years = np.array([2010, 2012, 2014, 2016, 2018, 2020], dtype=float)
+spending = np.array([100, 120, 140, 160, 180, 200], dtype=float)
+inflation = np.array([2.0, 2.3, 2.7, 3.0, 3.4, 3.8], dtype=float)
+
+result = get_relationship_narrative(
+    reference_years=years, reference_values=spending,
+    comparison_years=years, comparison_values=inflation,
+    reference_name={"name": "les dépenses", "plural": True, "feminine": True},
+    comparison_name={"name": "le taux d'inflation"},   # singular masculine defaults
+    lang="fr",
+)
+```
+
+Grammar flags on the dict are silently ignored for languages that don't need them (e.g. English), so the same call shape works across languages.
+
+See [Adding a new language](#adding-a-new-language) below.
 
 ### Relationship Narratives
 
@@ -142,24 +200,31 @@ Use `analyze_relationship()` when you want to inspect or store the analysis
 results separately from narrative generation:
 
 ```python
+import numpy as np
 from trend_narrative import analyze_relationship, get_relationship_narrative
 
-insights = analyze_relationship(
-    reference_years=years1,
-    reference_values=values1,
-    comparison_years=years2,
-    comparison_values=values2,
-)
-# Store insights in database, inspect programmatically, etc.
-print(insights["method"])  # "lagged_correlation", "comovement", or "insufficient_data"
-print(insights["best_lag"])  # lag details for correlation path
+years = np.array([2010, 2012, 2014, 2016, 2018, 2020], dtype=float)
+spending = np.array([100, 120, 140, 160, 180, 200], dtype=float)
+outcome = np.array([50, 55, 62, 70, 78, 85], dtype=float)
 
-# Generate narrative later from stored insights
+insights = analyze_relationship(
+    reference_years=years,
+    reference_values=spending,
+    comparison_years=years,
+    comparison_values=outcome,
+)
+# Store insights in a database, inspect programmatically, etc.
+print(insights["method"])    # → "lagged_correlation"
+print(insights["best_lag"])  # → {"lag": 1, "correlation": 0.85, "p_value": 0.15, "n_pairs": 4}
+print(insights["n_points"])  # → 6
+
+# Generate narrative later from stored insights — no re-analysis needed
 result = get_relationship_narrative(
     insights=insights,
     reference_name="spending",
     comparison_name="outcome",
 )
+print(result["narrative"])
 ```
 
 The function automatically chooses the analysis method based on data availability:
@@ -171,11 +236,16 @@ The function automatically chooses the analysis method based on data availabilit
 
 ## API Reference
 
-### `get_segment_narrative(segments, cv_value, metric="expenditure")`
-### `get_segment_narrative(extractor, metric="expenditure")`
+### `get_segment_narrative(segments, cv_value, metric="expenditure", lang="en")`
+### `get_segment_narrative(extractor, metric="expenditure", lang="en")`
 
-Generates a plain-English narrative for a single time series. Accepts either
-precomputed data or an `InsightExtractor` instance.
+Generates a narrative for a single time series. Accepts either
+precomputed data or an `InsightExtractor` instance. Set `lang="fr"` for French.
+
+`metric` accepts either a plain string or a dict with grammatical
+properties: `{"name": str, "plural": bool, "feminine": bool}`. For French,
+use the dict form when the metric isn't singular masculine — see
+[Grammatical agreement](#grammatical-agreement-french).
 
 - No segments + low CV → *"remained highly stable"*
 - No segments + high CV → *"exhibited significant volatility"*
@@ -220,9 +290,9 @@ get_relationship_narrative(
     reference_values=None,     # array-like, the "driver" series values
     comparison_years=None,     # array-like, the "outcome" series years
     comparison_values=None,    # array-like, the "outcome" series values
-    # Required for narrative
-    reference_name="",         # str, display name for reference
-    comparison_name="",        # str, display name for comparison
+    # Required for narrative — str or dict (see "Grammatical agreement")
+    reference_name="",         # str | dict, display name for reference
+    comparison_name="",        # str | dict, display name for comparison
     # Optional parameters
     reference_segments=None,   # optional pre-computed segments
     correlation_threshold=5,   # min points for correlation analysis
@@ -233,6 +303,8 @@ get_relationship_narrative(
     reference_leads=None,      # True/False to override, None to infer
     # Precomputed insights
     insights=None,             # dict from analyze_relationship()
+    # Language
+    lang="en",                 # "en" or "fr"
 )
 ```
 
@@ -275,9 +347,15 @@ to control the fitting logic.
 Merges consecutive segments that share the same slope direction. Applied
 automatically inside `get_segment_narrative`.
 
-### `millify(n)`
+### `millify(n, lang="en")`
 
-Formats large numbers with a human-readable suffix: `1_500_000 → "1.50 M"`.
+Formats large numbers with a human-readable suffix. The decimal separator
+and magnitude suffixes come from the language catalog:
+
+- `millify(1_500_000)` → `"1.50 M"`
+- `millify(1_500_000, lang="fr")` → `"1,50 M"`
+- `millify(3_000_000_000, lang="fr")` → `"3,00 Md"` (milliard — NOT `"B"`,
+  which in French means 10¹², a false friend with English)
 
 ---
 
@@ -299,18 +377,57 @@ trend-narrative/
 │   ├── __init__.py              # Public API
 │   ├── detector.py              # TrendDetector – piecewise-linear fitting
 │   ├── extractor.py             # InsightExtractor – volatility + trend facade
-│   ├── narrative.py             # Narrative generation + millify helper
-│   ├── relationship_analysis.py # Relationship analysis between two series
-│   └── relationship_narrative.py # Relationship narrative generation
+│   ├── narrative.py             # Segment narrative composition
+│   ├── relationship_analysis.py # Relationship analysis (language-neutral)
+│   ├── relationship_narrative.py # Relationship narrative composition
+│   └── translations/            # All localization lives here
+│       ├── __init__.py          # Catalog access, ICU engine, _unpack_metric,
+│       │                        #   millify, _format_percent, _genitive,
+│       │                        #   _resolve_time_unit, _time_unit_comparison
+│       ├── en.py                # English catalog (data only)
+│       └── fr.py                # French catalog (data only)
 ├── tests/
 │   ├── test_detector.py
 │   ├── test_extractor.py
 │   ├── test_narrative.py
 │   ├── test_relationship_analysis.py
-│   └── test_relationship_narrative.py
+│   ├── test_relationship_narrative.py
+│   └── test_translations.py     # i18n primitives + catalog + integration
 ├── pyproject.toml
 └── README.md
 ```
+
+---
+
+## Adding a New Language
+
+To add a new language (e.g. Spanish):
+
+1. **Copy** `trend_narrative/translations/en.py` to `trend_narrative/translations/es.py`.
+2. **Translate** every value in the `STRINGS` dict. Take care with nested keys:
+   - `number_format` (`decimal_sep`, `percent_template`, `suffixes`) — Spanish uses `,` for decimals, like French.
+   - `time_units` and `time_unit_genders` — singular/plural pairs and grammatical genders for each unit.
+   - `time_unit_fallback_plural_suffix` — what to append to unknown units when `count > 1` (English uses `"s"`; languages without a one-size-fits-all rule should use `""`).
+3. **Register** the new module in `trend_narrative/translations/__init__.py`:
+
+   ```python
+   from . import en, fr, es  # add the new import
+
+   _REGISTRY: dict[str, dict[str, object]] = {
+       "en": en.STRINGS,
+       "fr": fr.STRINGS,
+       "es": es.STRINGS,  # add the new entry
+   }
+   ```
+
+4. **Implement `_genitive_<lang>`** in `translations/__init__.py` if your language has article contractions or elision (Spanish: `de + el → del`, `de + la` stays). Dispatch in `_genitive`:
+
+   ```python
+   if lang == "es":
+       return _genitive_es(name)
+   ```
+
+`SUPPORTED_LANGUAGES` updates automatically. A catalog-parity check fires at import time (`_assert_catalog_parity`) and raises `ImportError` if your catalog is missing any top-level keys present in English — so half-finished catalogs fail loud rather than producing wrong output in production.
 
 ---
 

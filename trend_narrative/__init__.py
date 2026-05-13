@@ -2,7 +2,7 @@
 trend_narrative
 ~~~~~~~~~~~~~~~
 A standalone Python package for piecewise-linear trend detection and
-plain-English narrative generation.
+narrative generation.
 
 Two calling paths are supported:
 
@@ -30,13 +30,10 @@ custom detector without changing the narrative layer.
 
 from .detector import TrendDetector
 from .extractor import InsightExtractor
-from .narrative import (
-    consolidate_segments,
-    get_segment_narrative,
-    millify,
-)
+from .narrative import consolidate_segments, get_segment_narrative
 from .relationship_analysis import analyze_relationship
 from .relationship_narrative import get_relationship_narrative
+from .translations import SUPPORTED_LANGUAGES, millify
 
 __all__ = [
     "TrendDetector",
@@ -46,6 +43,7 @@ __all__ = [
     "analyze_relationship",
     "get_relationship_narrative",
     "millify",
+    "SUPPORTED_LANGUAGES",
 ]
 
 __version__ = "0.3.0"

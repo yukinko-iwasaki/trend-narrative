@@ -48,8 +48,8 @@ class TestGetDirection:
         assert get_direction(np.array([0, -150])) == "decreased"
 
     def test_stable_small_change(self):
-        assert get_direction(np.array([100, 104])) == "remained stable"
-        assert get_direction(np.array([0, 0])) == "remained stable"
+        assert get_direction(np.array([100, 104])) == "remained_stable"
+        assert get_direction(np.array([0, 0])) == "remained_stable"
 
     def test_single_value(self):
         assert get_direction(np.array([100])) == "unknown"
@@ -64,22 +64,22 @@ class TestGetDirection:
 
 class TestGetCorrelationStrength:
     def test_no_correlation(self):
-        assert get_correlation_strength(0.05) == "no"
+        assert get_correlation_strength(0.05) == "strength_no"
 
     def test_weak(self):
-        assert get_correlation_strength(0.25) == "weak"
+        assert get_correlation_strength(0.25) == "strength_weak"
 
     def test_moderate(self):
-        assert get_correlation_strength(0.45) == "moderate"
+        assert get_correlation_strength(0.45) == "strength_moderate"
 
     def test_strong(self):
-        assert get_correlation_strength(0.65) == "strong"
+        assert get_correlation_strength(0.65) == "strength_strong"
 
     def test_very_strong(self):
-        assert get_correlation_strength(0.85) == "very strong"
+        assert get_correlation_strength(0.85) == "strength_very_strong"
 
     def test_negative_same_as_positive(self):
-        assert get_correlation_strength(-0.65) == "strong"
+        assert get_correlation_strength(-0.65) == "strength_strong"
 
 
 # ---------------------------------------------------------------------------

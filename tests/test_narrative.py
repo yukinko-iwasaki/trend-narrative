@@ -7,7 +7,6 @@ from trend_narrative import InsightExtractor, TrendDetector
 from trend_narrative.narrative import (
     consolidate_segments,
     get_segment_narrative,
-    millify,
 )
 
 
@@ -33,31 +32,6 @@ def _linear_extractor(n=12, slope=5.0):
     x = np.arange(2010, 2010 + n, dtype=float)
     y = 100.0 + slope * np.arange(n, dtype=float)
     return InsightExtractor(x, y)
-
-
-# ---------------------------------------------------------------------------
-# millify
-# ---------------------------------------------------------------------------
-
-class TestMillify:
-    def test_small_number(self):
-        assert millify(750) == "750.00"
-
-    def test_thousands(self):
-        assert millify(1_500) == "1.50 K"
-
-    def test_millions(self):
-        assert millify(2_000_000) == "2.00 M"
-
-    def test_billions(self):
-        assert millify(3_000_000_000) == "3.00 B"
-
-    def test_zero(self):
-        assert millify(0) == "0.00"
-
-    def test_negative(self):
-        result = millify(-500_000)
-        assert "-" in result or "500" in result
 
 
 # ---------------------------------------------------------------------------
