@@ -31,11 +31,24 @@ from .translations import (
 Formatter = Union[str, Callable[[float], str]]
 
 
-def _format_value(value: float, fmt: Formatter) -> str:
-    """Format a numeric value using the given format spec or callable."""
+def _format_value(value: float, fmt: Formatter, lang: str = "en") -> str:
+    """Format a numeric value, applying the language's decimal separator.
+
+    String format specs are localized by swapping ``.`` for the catalog's
+    ``decimal_sep``. Callable formats pass through unchanged so callers
+    retain full control (e.g. custom currency rendering).
+
+    Note: only handles the decimal separator. Format specs with thousand
+    separators (e.g. ``",.2f"``) may produce ambiguous output in languages
+    where ``,`` is the decimal separator; pass a callable for those cases.
+    """
     if callable(fmt):
         return fmt(value)
-    return f"{value:{fmt}}"
+    formatted = f"{value:{fmt}}"
+    decimal_sep = get_translations(lang)["number_format"]["decimal_sep"]
+    if decimal_sep != ".":
+        formatted = formatted.replace(".", decimal_sep)
+    return formatted
 
 
 _DEFAULT_ICU = {"number": "singular", "gender": "masculine"}
@@ -82,8 +95,8 @@ def _build_comovement_narrative(
         ref_dir_key = seg["reference_direction"]
         comp_dir_key = seg["comparison_direction"]
 
-        ref_start = _format_value(seg["reference_start"], reference_format)
-        ref_end = _format_value(seg["reference_end"], reference_format)
+        ref_start = _format_value(seg["reference_start"], reference_format, lang=lang)
+        ref_end = _format_value(seg["reference_end"], reference_format, lang=lang)
 
         # Override direction if formatted values are the same
         if ref_start == ref_end:
@@ -93,7 +106,7 @@ def _build_comovement_narrative(
 
         if comp_dir_key is None:
             if comp_n == 1:
-                comp_start = _format_value(seg["comparison_start"], comparison_format)
+                comp_start = _format_value(seg["comparison_start"], comparison_format, lang=lang)
                 seg_narrative = t["single_observation"].format(
                     period=period, ref_name=reference_name, ref_dir=ref_dir,
                     ref_start=ref_start, ref_end=ref_end,
@@ -101,7 +114,7 @@ def _build_comovement_narrative(
                     comp_name_gen=_genitive(lang, comparison_name),
                 )
             else:
-                comp_start = _format_value(seg["comparison_start"], comparison_format)
+                comp_start = _format_value(seg["comparison_start"], comparison_format, lang=lang)
                 stable_tpl = icu_format(t["stable_comparison"], **comparison_icu)
                 seg_narrative = stable_tpl.format(
                     period=period, ref_name=reference_name, ref_dir=ref_dir,
@@ -109,8 +122,8 @@ def _build_comovement_narrative(
                     comp_name=comparison_name, comp_start=comp_start,
                 )
         else:
-            comp_start = _format_value(seg["comparison_start"], comparison_format)
-            comp_end = _format_value(seg["comparison_end"], comparison_format)
+            comp_start = _format_value(seg["comparison_start"], comparison_format, lang=lang)
+            comp_end = _format_value(seg["comparison_end"], comparison_format, lang=lang)
 
             # Override direction if formatted values are the same
             if comp_start == comp_end:
@@ -152,8 +165,8 @@ def _build_comovement_narrative(
     else:
         narrative = ". ".join(narratives) + "."
 
-    # Add caveat about limited data
-    narrative += t["limited_data_caveat"].format(comp_name=comparison_name)
+    # Add caveat about limited data (separator owned by composition, not the template)
+    narrative += " " + t["limited_data_caveat"].format(comp_name=comparison_name)
 
     return narrative
 

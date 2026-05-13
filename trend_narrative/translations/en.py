@@ -122,7 +122,7 @@ STRINGS: dict[str, object] = {
         "({comp_start} to {comp_end})"
     ),
     "limited_data_caveat": (
-        " With limited {comp_name} data, "
+        "With limited {comp_name} data, "
         "a statistical relationship cannot be established."
     ),
 

@@ -427,6 +427,49 @@ class TestRelationshipNarrativeIntegration:
         assert "de les" not in narrative
         assert "de le " not in narrative
 
+    def test_comovement_french_localizes_numeric_values(self):
+        """Regression: numeric values inside parens must use ',' in French.
+
+        Catches a class of bug where _format_value bypassed the catalog's
+        decimal separator and rendered ``(100.00 à 150.00)`` inside French
+        prose instead of ``(100,00 à 150,00)``.
+        """
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100.0, 125.0, 150.0])
+        comp_years = np.array([2011, 2015, 2019])
+        # Forces stable_comparison (boundary values equal → no direction)
+        comp_values = np.array([50.0, 60.0, 50.0])
+
+        result = get_relationship_narrative(
+            reference_years=ref_years, reference_values=ref_values,
+            comparison_years=comp_years, comparison_values=comp_values,
+            reference_name={"name": "les dépenses", "plural": True, "feminine": True},
+            comparison_name={"name": "les ressources", "plural": True, "feminine": True},
+            lang="fr",
+        )
+        narrative = result["narrative"]
+        assert "100,00" in narrative and "150,00" in narrative and "50,00" in narrative
+        # And no English decimals leaking through
+        assert "100.00" not in narrative
+        assert "50.00" not in narrative
+
+    def test_limited_data_caveat_has_space_in_french(self):
+        """Regression: ``"... stable (50,00). Avec ..."`` must have a space
+        before "Avec". The template no longer owns the leading separator —
+        composition does — so both languages get the same spacing."""
+        ref_years = np.array([2010, 2015, 2020])
+        ref_values = np.array([100.0, 125.0, 150.0])
+        comp_years = np.array([2011, 2015, 2019])
+        comp_values = np.array([50.0, 60.0, 50.0])
+
+        result = get_relationship_narrative(
+            reference_years=ref_years, reference_values=ref_values,
+            comparison_years=comp_years, comparison_values=comp_values,
+            reference_name="dépenses", comparison_name="ressources", lang="fr",
+        )
+        assert ". Avec des données limitées" in result["narrative"]
+        assert ".Avec" not in result["narrative"]
+
     def test_timing_same_gender_agreement_french(self):
         """time_unit='year' is feminine → 'la même année', not 'du même année'."""
         years, ref, comp = _strong_signal_series(n=15)
