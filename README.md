@@ -48,7 +48,7 @@ import numpy as np
 from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
 
 x = np.arange(2010, 2022, dtype=float)
-y = np.array([100, 105, 112, 108, 115, 130, 125, 120, 118, 122, 135, 148], dtype=float)
+y = np.array([100, 110, 120, 130, 140, 150, 140, 130, 120, 110, 100, 90], dtype=float)
 
 extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
 narrative = get_segment_narrative(extractor=extractor, metric="health spending")
@@ -74,7 +74,7 @@ import numpy as np
 from trend_narrative import InsightExtractor, TrendDetector, get_segment_narrative
 
 x = np.arange(2010, 2022, dtype=float)
-y = np.array([100, 105, 112, 108, 115, 130, 125, 120, 118, 122, 135, 148], dtype=float)
+y = np.array([100, 110, 120, 130, 140, 150, 140, 130, 120, 110, 100, 90], dtype=float)
 
 extractor = InsightExtractor(x, y, detector=TrendDetector(max_segments=2))
 narrative = get_segment_narrative(extractor=extractor, metric="health spending")
@@ -228,6 +228,11 @@ The function automatically chooses the analysis method based on data availabilit
 Generates a narrative for a single time series. Accepts either
 precomputed data or an `InsightExtractor` instance. Set `lang="fr"` for French.
 
+`metric` accepts either a plain string or a dict with grammatical
+properties: `{"name": str, "plural": bool, "feminine": bool}`. For French,
+use the dict form when the metric isn't singular masculine — see
+[Grammatical agreement](#grammatical-agreement-french).
+
 - No segments + low CV → *"remained highly stable"*
 - No segments + high CV → *"exhibited significant volatility"*
 - Single segment → direction + % change sentence
@@ -271,9 +276,9 @@ get_relationship_narrative(
     reference_values=None,     # array-like, the "driver" series values
     comparison_years=None,     # array-like, the "outcome" series years
     comparison_values=None,    # array-like, the "outcome" series values
-    # Required for narrative
-    reference_name="",         # str, display name for reference
-    comparison_name="",        # str, display name for comparison
+    # Required for narrative — str or dict (see "Grammatical agreement")
+    reference_name="",         # str | dict, display name for reference
+    comparison_name="",        # str | dict, display name for comparison
     # Optional parameters
     reference_segments=None,   # optional pre-computed segments
     correlation_threshold=5,   # min points for correlation analysis
@@ -328,9 +333,15 @@ to control the fitting logic.
 Merges consecutive segments that share the same slope direction. Applied
 automatically inside `get_segment_narrative`.
 
-### `millify(n)`
+### `millify(n, lang="en")`
 
-Formats large numbers with a human-readable suffix: `1_500_000 → "1.50 M"`.
+Formats large numbers with a human-readable suffix. The decimal separator
+and magnitude suffixes come from the language catalog:
+
+- `millify(1_500_000)` → `"1.50 M"`
+- `millify(1_500_000, lang="fr")` → `"1,50 M"`
+- `millify(3_000_000_000, lang="fr")` → `"3,00 Md"` (milliard — NOT `"B"`,
+  which in French means 10¹², a false friend with English)
 
 ---
 
@@ -352,20 +363,22 @@ trend-narrative/
 │   ├── __init__.py              # Public API
 │   ├── detector.py              # TrendDetector – piecewise-linear fitting
 │   ├── extractor.py             # InsightExtractor – volatility + trend facade
-│   ├── narrative.py             # Narrative generation + millify helper
-│   ├── relationship_analysis.py # Relationship analysis between two series
-│   ├── relationship_narrative.py # Relationship narrative generation
-│   └── translations/            # Multilingual string catalogs
-│       ├── __init__.py          # get_translations(), SUPPORTED_LANGUAGES
-│       ├── en.py                # English strings
-│       └── fr.py                # French strings
+│   ├── narrative.py             # Segment narrative composition
+│   ├── relationship_analysis.py # Relationship analysis (language-neutral)
+│   ├── relationship_narrative.py # Relationship narrative composition
+│   └── translations/            # All localization lives here
+│       ├── __init__.py          # Catalog access, ICU engine, _unpack_metric,
+│       │                        #   millify, _format_percent, _genitive,
+│       │                        #   _resolve_time_unit, _time_unit_comparison
+│       ├── en.py                # English catalog (data only)
+│       └── fr.py                # French catalog (data only)
 ├── tests/
 │   ├── test_detector.py
 │   ├── test_extractor.py
 │   ├── test_narrative.py
 │   ├── test_relationship_analysis.py
 │   ├── test_relationship_narrative.py
-│   └── test_translations.py     # French language tests
+│   └── test_translations.py     # i18n primitives + catalog + integration
 ├── pyproject.toml
 └── README.md
 ```
@@ -374,23 +387,33 @@ trend-narrative/
 
 ## Adding a New Language
 
-The translation system is designed for easy extension. To add a new language (e.g. Spanish):
+To add a new language (e.g. Spanish):
 
-1. **Copy** `trend_narrative/translations/en.py` to `trend_narrative/translations/es.py`
-2. **Translate** every value in the `STRINGS` dict
+1. **Copy** `trend_narrative/translations/en.py` to `trend_narrative/translations/es.py`.
+2. **Translate** every value in the `STRINGS` dict. Take care with nested keys:
+   - `number_format` (`decimal_sep`, `percent_template`, `suffixes`) — Spanish uses `,` for decimals, like French.
+   - `time_units` and `time_unit_genders` — singular/plural pairs and grammatical genders for each unit.
+   - `time_unit_fallback_plural_suffix` — what to append to unknown units when `count > 1` (English uses `"s"`; languages without a one-size-fits-all rule should use `""`).
 3. **Register** the new module in `trend_narrative/translations/__init__.py`:
 
-```python
-from . import en, fr, es  # add the new import
+   ```python
+   from . import en, fr, es  # add the new import
 
-_REGISTRY: dict[str, dict[str, object]] = {
-    "en": en.STRINGS,
-    "fr": fr.STRINGS,
-    "es": es.STRINGS,  # add the new entry
-}
-```
+   _REGISTRY: dict[str, dict[str, object]] = {
+       "en": en.STRINGS,
+       "fr": fr.STRINGS,
+       "es": es.STRINGS,  # add the new entry
+   }
+   ```
 
-That's it. `SUPPORTED_LANGUAGES` updates automatically, and `lang="es"` will work across the entire API.
+4. **Implement `_genitive_<lang>`** in `translations/__init__.py` if your language has article contractions or elision (Spanish: `de + el → del`, `de + la` stays). Dispatch in `_genitive`:
+
+   ```python
+   if lang == "es":
+       return _genitive_es(name)
+   ```
+
+`SUPPORTED_LANGUAGES` updates automatically. A catalog-parity check fires at import time (`_assert_catalog_parity`) and raises `ImportError` if your catalog is missing any top-level keys present in English — so half-finished catalogs fail loud rather than producing wrong output in production.
 
 ---
 
