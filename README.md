@@ -107,30 +107,49 @@ narrative = get_segment_narrative(
 All narrative functions accept a `lang` parameter. The default is `"en"` (English), so existing code works unchanged.
 
 ```python
-# French narrative
-narrative = get_segment_narrative(extractor=extractor, metric="dépenses de santé", lang="fr")
-# → "De 2010 à 2015, dépenses de santé a affiché une tendance à la hausse.
-#    La tendance s'est ensuite inversée, atteignant un pic en 2015 avant de s'inverser en déclin."
-
-# English (default — same as before)
+# English — plain strings work for any metric
 narrative = get_segment_narrative(extractor=extractor, metric="health spending")
+
+# French — see "Grammatical agreement" below for non-trivial metrics
+narrative = get_segment_narrative(
+    extractor=extractor,
+    metric={"name": "les dépenses de santé", "plural": True, "feminine": True},
+    lang="fr",
+)
+# → "De 2010 à 2015, les dépenses de santé ont affiché une tendance à la hausse.
+#    La tendance s'est ensuite inversée, atteignant un pic en 2015 avant de s'inverser en déclin."
 ```
 
-Relationship narratives work the same way:
+Currently supported: `"en"` (English), `"fr"` (French).
+
+#### Grammatical agreement (French)
+
+French verbs and adjectives must agree with the metric's grammatical **number** (singular/plural) and **gender** (masculine/feminine). When the metric isn't singular masculine, pass it as a dict:
+
+```python
+{"name": "les dépenses",   "plural": True,  "feminine": True}   # plural feminine
+{"name": "les taux",       "plural": True,  "feminine": False}  # plural masculine
+{"name": "la production",  "plural": False, "feminine": True}   # singular feminine
+{"name": "le taux",        "plural": False, "feminine": False}  # singular masculine
+```
+
+The `plural` / `feminine` keys default to `False`. A plain string (e.g. `metric="les dépenses"`) is accepted, but defaults to singular masculine — silently producing wrong agreement like `dépenses **a augmenté**` instead of `dépenses **ont augmenté**`. **The dict form is strongly recommended for any French metric that isn't singular masculine.**
+
+The same applies to `reference_name` and `comparison_name` in `get_relationship_narrative`:
 
 ```python
 result = get_relationship_narrative(
-    reference_years=years1,
-    reference_values=values1,
-    comparison_years=years2,
-    comparison_values=values2,
-    reference_name="dépenses",
-    comparison_name="résultat",
+    reference_years=years1, reference_values=values1,
+    comparison_years=years2, comparison_values=values2,
+    reference_name={"name": "les dépenses", "plural": True, "feminine": True},
+    comparison_name={"name": "le taux d'inflation"},   # singular masculine defaults
     lang="fr",
 )
 ```
 
-Currently supported: `"en"` (English), `"fr"` (French). See [Adding a new language](#adding-a-new-language) below.
+Grammar flags on the dict are silently ignored for languages that don't need them (e.g. English), so the same call shape works across languages.
+
+See [Adding a new language](#adding-a-new-language) below.
 
 ### Relationship Narratives
 
