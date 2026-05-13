@@ -286,10 +286,24 @@ def icu_format(template: str, **kwargs: str) -> str:
     'ont augmenté'
     >>> icu_format("plain {metric} string", number="plural")
     'plain {metric} string'
+
+    Raises
+    ------
+    ValueError
+        If the template contains malformed ICU syntax (unbalanced braces,
+        missing case body, etc.). The error includes a template excerpt so
+        the offending catalog entry can be located.
     """
     if "select" not in template:
         return template
-    return _resolve_selects(template, kwargs)
+    try:
+        return _resolve_selects(template, kwargs)
+    except (IndexError, ValueError) as exc:
+        excerpt = template if len(template) <= 80 else template[:77] + "..."
+        raise ValueError(
+            f"Malformed ICU template ({type(exc).__name__}: {exc}). "
+            f"Template: {excerpt!r}"
+        ) from exc
 
 
 def get_translations(lang: str = "en") -> dict[str, object]:

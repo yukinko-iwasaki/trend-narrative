@@ -45,6 +45,12 @@ def get_direction(values: np.ndarray) -> str:
 
     start, end = values[0], values[-1]
 
+    # NaN/inf would propagate silently through the comparisons below
+    # (NaN > 0 is False, NaN != 0 is True) and produce "decreased" for any
+    # non-finite input — caller pre-filtering can't always be assumed.
+    if not (np.isfinite(start) and np.isfinite(end)):
+        return "unknown"
+
     # Use the non-zero value as denominator; if both zero, stable
     if start == 0 and end == 0:
         return "remained_stable"

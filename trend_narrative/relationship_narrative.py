@@ -53,6 +53,54 @@ def _format_value(value: float, fmt: Formatter, lang: str = "en") -> str:
 
 _DEFAULT_ICU = {"number": "singular", "gender": "masculine"}
 
+# Required keys and valid methods for the precomputed-insights API path.
+# Defended explicitly because Path 2 callers often load these from a database
+# or Delta table, where schema drift or partial dumps produce malformed
+# dicts that would otherwise crash deep inside the narrative builders.
+_REQUIRED_INSIGHT_KEYS = frozenset({
+    "method", "n_points", "segment_details",
+    "best_lag", "all_lags", "max_lag_tested", "reference_leads",
+})
+_VALID_METHODS = frozenset({"insufficient_data", "comovement", "lagged_correlation"})
+
+
+def _validate_insights(insights: dict) -> None:
+    """Validate the shape of a precomputed insights dict.
+
+    Catches three classes of bug at the API boundary so callers get a clear
+    error rather than a downstream KeyError or TypeError:
+    * Missing keys (schema drift in stored insights)
+    * Unknown ``method`` values (typo or version skew)
+    * method/payload mismatch (e.g. ``method='lagged_correlation'`` with
+      ``best_lag=None``)
+    """
+    if not isinstance(insights, dict):
+        raise TypeError(
+            f"insights must be a dict, got {type(insights).__name__}"
+        )
+    missing = _REQUIRED_INSIGHT_KEYS - set(insights.keys())
+    if missing:
+        raise ValueError(
+            f"insights dict is missing required keys: {sorted(missing)}. "
+            f"Expected all of: {sorted(_REQUIRED_INSIGHT_KEYS)}"
+        )
+    method = insights["method"]
+    if method not in _VALID_METHODS:
+        raise ValueError(
+            f"insights has unknown method {method!r}. "
+            f"Expected one of: {sorted(_VALID_METHODS)}"
+        )
+    if method == "lagged_correlation" and insights["best_lag"] is None:
+        raise ValueError(
+            "insights with method='lagged_correlation' requires a non-None "
+            "'best_lag' dict"
+        )
+    if method == "comovement" and insights["segment_details"] is None:
+        raise ValueError(
+            "insights with method='comovement' requires 'segment_details' "
+            "to be a list (use [] to indicate no analyzable segments)"
+        )
+
 
 def _build_comovement_narrative(
     segment_details: list[dict],
@@ -404,6 +452,7 @@ def get_relationship_narrative(
     comparison_name, comparison_icu = _unpack_metric(comparison_name)
 
     if insights is not None:
+        _validate_insights(insights)
         analysis = insights
     elif reference_years is not None and comparison_years is not None:
         analysis = analyze_relationship(

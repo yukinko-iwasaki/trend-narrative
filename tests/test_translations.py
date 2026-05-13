@@ -124,6 +124,18 @@ class TestIcuFormat:
         t = get_translations("fr")
         assert "{metric}" in icu_format(t["vol_moderate"], number="singular")
 
+    @pytest.mark.parametrize("template, label", [
+        # Truncated mid-case body — common translator typo
+        ("{number, select, singular {good} other {bad", "missing closing brace"),
+        # Missing case body entirely
+        ("{number, select, singular other {x}}", "no body for case"),
+    ])
+    def test_malformed_template_raises_clear_error(self, template, label):
+        """Translator typos in catalog files surface as ValueError with the
+        template excerpt, not opaque IndexError from the parser internals."""
+        with pytest.raises(ValueError, match="Malformed ICU template"):
+            icu_format(template, number="singular")
+
     def test_preserves_format_specs(self):
         """{corr:.2f} format spec must survive select resolution."""
         template = "{number, select, singular {r={corr:.2f}} other {R={corr:.2f}}}"
@@ -507,6 +519,98 @@ class TestRelationshipNarrativeIntegration:
         if "même" in narrative:
             assert "la même année" in narrative
             assert "du même" not in narrative
+
+
+class TestGetDirectionNonFinite:
+    """Regression: NaN/inf in get_direction must return "unknown" rather
+    than silently propagating through comparisons. NaN > 0 is False, so
+    a NaN start would otherwise fall through to "decreased"."""
+
+    @pytest.mark.parametrize("values", [
+        [np.nan, 100.0],
+        [100.0, np.nan],
+        [np.nan, np.nan],
+        [np.inf, 100.0],
+        [100.0, -np.inf],
+    ])
+    def test_non_finite_returns_unknown(self, values):
+        from trend_narrative.relationship_analysis import get_direction
+        assert get_direction(np.array(values)) == "unknown"
+
+    def test_finite_still_works(self):
+        """Sanity: real values still resolve normally."""
+        from trend_narrative.relationship_analysis import get_direction
+        assert get_direction(np.array([100.0, 200.0])) == "increased"
+        assert get_direction(np.array([100.0, 100.0])) == "remained_stable"
+
+
+class TestInsightsValidation:
+    """get_relationship_narrative validates precomputed insights so Path 2
+    callers (loading from a database) get a clear ValueError rather than
+    a cryptic KeyError or TypeError deep inside the narrative builders."""
+
+    _VALID_LAGGED = {
+        "method": "lagged_correlation", "n_points": 5,
+        "segment_details": None,
+        "best_lag": {"lag": 0, "correlation": 0.5, "p_value": 0.05, "n_pairs": 4},
+        "all_lags": [],
+        "max_lag_tested": 0,
+        "reference_leads": True,
+    }
+
+    def test_missing_keys_lists_what_is_missing(self):
+        with pytest.raises(ValueError, match="missing required keys"):
+            get_relationship_narrative(
+                insights={"method": "lagged_correlation"},
+                reference_name="a", comparison_name="b",
+            )
+
+    def test_unknown_method_rejected(self):
+        bad = {**self._VALID_LAGGED, "method": "telepathy"}
+        with pytest.raises(ValueError, match="unknown method"):
+            get_relationship_narrative(
+                insights=bad, reference_name="a", comparison_name="b",
+            )
+
+    def test_lagged_correlation_requires_best_lag(self):
+        bad = {**self._VALID_LAGGED, "best_lag": None}
+        with pytest.raises(ValueError, match="requires a non-None 'best_lag'"):
+            get_relationship_narrative(
+                insights=bad, reference_name="a", comparison_name="b",
+            )
+
+    def test_comovement_requires_segment_details_list(self):
+        """``segment_details=None`` is invalid; ``segment_details=[]`` is OK."""
+        bad = {
+            "method": "comovement", "n_points": 3,
+            "segment_details": None,  # invalid
+            "best_lag": None, "all_lags": None, "max_lag_tested": None,
+            "reference_leads": True,
+        }
+        with pytest.raises(ValueError, match="requires 'segment_details' to be a list"):
+            get_relationship_narrative(
+                insights=bad, reference_name="a", comparison_name="b",
+            )
+
+    def test_non_dict_rejected(self):
+        with pytest.raises(TypeError, match="must be a dict"):
+            get_relationship_narrative(
+                insights="not a dict", reference_name="a", comparison_name="b",
+            )
+
+    def test_empty_segment_details_still_valid(self):
+        """``segment_details=[]`` should pass validation — fires the
+        unable_to_analyze template downstream (already tested elsewhere)."""
+        valid_empty = {
+            "method": "comovement", "n_points": 3,
+            "segment_details": [],  # valid: triggers unable_to_analyze
+            "best_lag": None, "all_lags": None, "max_lag_tested": None,
+            "reference_leads": True,
+        }
+        result = get_relationship_narrative(
+            insights=valid_empty, reference_name="a", comparison_name="b",
+        )
+        assert "Unable to analyze" in result["narrative"]
 
 
 class TestPrecomputedInsightsPaths:
