@@ -138,9 +138,16 @@ The `plural` / `feminine` keys default to `False`. A plain string (e.g. `metric=
 The same applies to `reference_name` and `comparison_name` in `get_relationship_narrative`:
 
 ```python
+import numpy as np
+from trend_narrative import get_relationship_narrative
+
+years = np.array([2010, 2012, 2014, 2016, 2018, 2020], dtype=float)
+spending = np.array([100, 120, 140, 160, 180, 200], dtype=float)
+inflation = np.array([2.0, 2.3, 2.7, 3.0, 3.4, 3.8], dtype=float)
+
 result = get_relationship_narrative(
-    reference_years=years1, reference_values=values1,
-    comparison_years=years2, comparison_values=values2,
+    reference_years=years, reference_values=spending,
+    comparison_years=years, comparison_values=inflation,
     reference_name={"name": "les dépenses", "plural": True, "feminine": True},
     comparison_name={"name": "le taux d'inflation"},   # singular masculine defaults
     lang="fr",
@@ -193,24 +200,31 @@ Use `analyze_relationship()` when you want to inspect or store the analysis
 results separately from narrative generation:
 
 ```python
+import numpy as np
 from trend_narrative import analyze_relationship, get_relationship_narrative
 
-insights = analyze_relationship(
-    reference_years=years1,
-    reference_values=values1,
-    comparison_years=years2,
-    comparison_values=values2,
-)
-# Store insights in database, inspect programmatically, etc.
-print(insights["method"])  # "lagged_correlation", "comovement", or "insufficient_data"
-print(insights["best_lag"])  # lag details for correlation path
+years = np.array([2010, 2012, 2014, 2016, 2018, 2020], dtype=float)
+spending = np.array([100, 120, 140, 160, 180, 200], dtype=float)
+outcome = np.array([50, 55, 62, 70, 78, 85], dtype=float)
 
-# Generate narrative later from stored insights
+insights = analyze_relationship(
+    reference_years=years,
+    reference_values=spending,
+    comparison_years=years,
+    comparison_values=outcome,
+)
+# Store insights in a database, inspect programmatically, etc.
+print(insights["method"])    # → "lagged_correlation"
+print(insights["best_lag"])  # → {"lag": 1, "correlation": 0.85, "p_value": 0.15, "n_pairs": 4}
+print(insights["n_points"])  # → 6
+
+# Generate narrative later from stored insights — no re-analysis needed
 result = get_relationship_narrative(
     insights=insights,
     reference_name="spending",
     comparison_name="outcome",
 )
+print(result["narrative"])
 ```
 
 The function automatically chooses the analysis method based on data availability:
