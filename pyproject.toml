@@ -4,18 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trend-narrative"
-version = "0.3.0"
-description = "Piecewise-linear trend detection and plain-English narrative generation for time-series data."
+version = "0.4.0"
+description = "Piecewise-linear trend detection and multilingual narrative generation for time-series data."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
     { name = "Yuki Suzuki", email = "yukinko.iwasaki@gmail.com" }
 ]
-keywords = ["trend", "narrative", "time-series", "piecewise", "statistics"]
+keywords = ["trend", "narrative", "time-series", "piecewise", "statistics", "i18n", "french"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+    "Natural Language :: English",
+    "Natural Language :: French",
 ]
 
 dependencies = [
@@ -29,6 +31,12 @@ dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/worldbank/trend-narrative"
+Documentation = "https://worldbank.github.io/trend-narrative/"
+Repository = "https://github.com/worldbank/trend-narrative"
+Issues = "https://github.com/worldbank/trend-narrative/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

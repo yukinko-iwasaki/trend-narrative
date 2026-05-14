@@ -46,4 +46,4 @@ __all__ = [
     "SUPPORTED_LANGUAGES",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
